@@ -1,0 +1,158 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoMovimentoMagazzino {
+  ENTRATA
+  USCITA
+  RETTIFICA
+}
+
+enum TipoMovimentoCassa {
+  ENTRATA
+  USCITA
+}
+
+enum TipoPresenza {
+  PRESENTE
+  FERIE
+  MALATTIA
+  RIPOSO
+}
+
+model Articolo {
+  id           String   @id @default(cuid())
+  codice       String   @unique
+  ean          String?  @unique
+  nome         String
+  descrizione  String?
+  unitaMisura  String   @default("pz")
+  quantita     Float    @default(0)
+  sogliaMinima Float    @default(0)
+  ubicazione   String?
+  attivo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  movimenti   MovimentoMagazzino[]
+  ingredienti IngredienteMenu[]
+
+  @@index([nome])
+  @@index([attivo])
+}
+
+model MovimentoMagazzino {
+  id         String                   @id @default(cuid())
+  articoloId String
+  tipo       TipoMovimentoMagazzino
+  quantita   Float
+  note       String?
+  createdAt  DateTime                 @default(now())
+
+  articolo Articolo @relation(fields: [articoloId], references: [id], onDelete: Cascade)
+
+  @@index([articoloId])
+  @@index([createdAt])
+  @@index([tipo])
+}
+
+model CategoriaMenu {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  nome        String
+  sottotitolo String?
+  ordine      Int        @default(0)
+  pubblicata  Boolean    @default(true)
+  voci        VoceMenu[]
+}
+
+model VoceMenu {
+  id          String   @id @default(cuid())
+  categoriaId String
+  nome        String
+  descrizione String?
+  prezzo      Float
+  attivo      Boolean  @default(true)
+  ordine      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  categoria   CategoriaMenu    @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+  ingredienti IngredienteMenu[]
+
+  @@index([categoriaId])
+}
+
+model IngredienteMenu {
+  id                 String @id @default(cuid())
+  voceMenuId         String
+  articoloId         String
+  quantitaNecessaria Float  @default(1)
+
+  voce     VoceMenu @relation(fields: [voceMenuId], references: [id], onDelete: Cascade)
+  articolo Articolo @relation(fields: [articoloId], references: [id], onDelete: Restrict)
+
+  @@unique([voceMenuId, articoloId])
+}
+
+model Dipendente {
+  id               String    @id @default(cuid())
+  nome             String
+  cognome          String
+  ruolo            String    @default("Sala")
+  telefono         String?
+  email            String?
+  dataAssunzione   DateTime?
+  retribuzione     Float     @default(0)
+  note             String?
+  attivo           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  presenze Presenza[]
+
+  @@index([cognome, nome])
+}
+
+model Presenza {
+  id           String       @id @default(cuid())
+  dipendenteId String
+  data         String
+  tipo         TipoPresenza
+  note         String?
+
+  dipendente Dipendente @relation(fields: [dipendenteId], references: [id], onDelete: Cascade)
+
+  @@unique([dipendenteId, data])
+  @@index([data])
+}
+
+model CategoriaCassa {
+  id     String              @id @default(cuid())
+  nome   String
+  tipo   TipoMovimentoCassa
+  ordine Int                 @default(0)
+
+  @@unique([tipo, nome])
+  @@index([tipo])
+}
+
+model MovimentoCassa {
+  id          String              @id @default(cuid())
+  tipo        TipoMovimentoCassa
+  importo     Float
+  categoria   String
+  descrizione String
+  data        DateTime
+  createdAt   DateTime            @default(now())
+
+  @@index([data])
+  @@index([tipo])
+  @@index([categoria])
+}

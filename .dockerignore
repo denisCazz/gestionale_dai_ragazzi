@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.md
+prisma/*.db
+prisma/*.db-journal
+Dockerfile
+docker-compose.yml
+.dockerignore
+.cursor
+agent-transcripts
