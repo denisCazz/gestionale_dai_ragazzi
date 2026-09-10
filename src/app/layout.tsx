@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Outfit } from "next/font/google";
+import Script from "next/script";
 import { AppShell } from "@/components/app-shell";
 import { ToastProvider } from "@/components/toast-provider";
 import "./globals.css";
@@ -31,6 +32,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ToastProvider />
         <AppShell>{children}</AppShell>
       </body>
+      <Script
+        src="https://umami.bitora.it/script.js"
+        data-website-id="dee3e962-5742-4b5d-ba76-1d2b010a7ccc"
+        strategy="afterInteractive"
+      />
     </html>
   );
 }
