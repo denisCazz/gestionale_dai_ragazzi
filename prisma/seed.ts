@@ -192,11 +192,14 @@ async function main() {
       const day = new Date(monthStart);
       day.setDate(i + 1);
       if (day.getDay() === 0) continue;
+      const riposo = day.getDay() === 1 && d.ruolo === "Sala";
       await prisma.presenza.create({
         data: {
           dipendenteId: d.id,
           data: format(day, "yyyy-MM-dd"),
-          tipo: day.getDay() === 1 && d.ruolo === "Sala" ? TipoPresenza.RIPOSO : TipoPresenza.PRESENTE,
+          tipo: riposo ? TipoPresenza.RIPOSO : TipoPresenza.PRESENTE,
+          oraIngresso: riposo ? null : d.ruolo === "Cucina" ? "09:00" : "08:00",
+          oraUscita: riposo ? null : d.ruolo === "Cucina" ? "17:00" : "16:00",
         },
       });
     }

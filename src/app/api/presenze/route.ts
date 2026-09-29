@@ -15,12 +15,20 @@ export async function GET(req: Request) {
   return NextResponse.json({ dipendenti, presenze });
 }
 
+const oraSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+  .nullable()
+  .optional();
+
 export async function PUT(req: Request) {
   const parsed = z
     .object({
       dipendenteId: z.string().min(1),
       data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       tipo: z.enum(["PRESENTE", "FERIE", "MALATTIA", "RIPOSO"]).nullable(),
+      oraIngresso: oraSchema,
+      oraUscita: oraSchema,
     })
     .safeParse(await req.json());
   if (!parsed.success) {
@@ -31,10 +39,17 @@ export async function PUT(req: Request) {
     await prisma.presenza.deleteMany({ where: { dipendenteId, data } });
     return NextResponse.json({ presenza: null });
   }
+  const orari =
+    tipo === "PRESENTE"
+      ? {
+          oraIngresso: parsed.data.oraIngresso || null,
+          oraUscita: parsed.data.oraUscita || null,
+        }
+      : { oraIngresso: null, oraUscita: null };
   const presenza = await prisma.presenza.upsert({
     where: { dipendenteId_data: { dipendenteId, data } },
-    create: { dipendenteId, data, tipo },
-    update: { tipo },
+    create: { dipendenteId, data, tipo, ...orari },
+    update: { tipo, ...orari },
   });
   return NextResponse.json({ presenza });
 }

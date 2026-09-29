@@ -125,6 +125,8 @@ model Presenza {
   dipendenteId String
   data         String
   tipo         TipoPresenza
+  oraIngresso  String?
+  oraUscita    String?
   note         String?
 
   dipendente Dipendente @relation(fields: [dipendenteId], references: [id], onDelete: Cascade)

@@ -37,7 +37,30 @@ type Dipendente = {
   attivo: boolean;
   dataAssunzione: string | null;
 };
-type Presenza = { id: string; dipendenteId: string; data: string; tipo: TipoPresenza };
+type Presenza = {
+  id: string;
+  dipendenteId: string;
+  data: string;
+  tipo: TipoPresenza;
+  oraIngresso: string | null;
+  oraUscita: string | null;
+};
+
+function oreLavorate(ingresso: string, uscita: string) {
+  if (!ingresso || !uscita) return null;
+  const [ih, im] = ingresso.split(":").map(Number);
+  const [uh, um] = uscita.split(":").map(Number);
+  if ([ih, im, uh, um].some((n) => Number.isNaN(n))) return null;
+  let minuti = uh * 60 + um - (ih * 60 + im);
+  if (minuti < 0) minuti += 24 * 60;
+  const ore = Math.floor(minuti / 60);
+  const resto = minuti % 60;
+  return resto ? `${ore}h ${resto}m` : `${ore}h`;
+}
+
+function adesso() {
+  return format(new Date(), "HH:mm");
+}
 
 const TIPI: { tipo: TipoPresenza; label: string; short: string; className: string }[] = [
   { tipo: "PRESENTE", label: "Presente", short: "P", className: "bg-emerald-100 text-emerald-800 border-emerald-200" },
@@ -62,7 +85,11 @@ export default function DipendentiPage() {
   const [dipendenti, setDipendenti] = useState<Dipendente[]>([]);
   const [presenze, setPresenze] = useState<Presenza[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cell, setCell] = useState<{ dipendente: Dipendente; data: string; tipo: TipoPresenza | null } | null>(null);
+  const [cell, setCell] = useState<{ dipendente: Dipendente; data: string } | null>(null);
+  const [tipoDraft, setTipoDraft] = useState<TipoPresenza | null>(null);
+  const [oraIngresso, setOraIngresso] = useState("");
+  const [oraUscita, setOraUscita] = useState("");
+  const [savingPresenza, setSavingPresenza] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Dipendente | null>(null);
   const [form, setForm] = useState(EMPTY);
@@ -94,31 +121,54 @@ export default function DipendentiPage() {
   }, [mese, load]);
 
   const presenzaMap = useMemo(() => {
-    const map = new Map<string, TipoPresenza>();
-    for (const p of presenze) map.set(`${p.dipendenteId}:${p.data}`, p.tipo);
+    const map = new Map<string, Presenza>();
+    for (const p of presenze) map.set(`${p.dipendenteId}:${p.data}`, p);
     return map;
   }, [presenze]);
 
+  function openCell(dipendente: Dipendente, data: string) {
+    const presenza = presenzaMap.get(`${dipendente.id}:${data}`);
+    setCell({ dipendente, data });
+    setTipoDraft(presenza?.tipo ?? null);
+    setOraIngresso(presenza?.oraIngresso ?? "");
+    setOraUscita(presenza?.oraUscita ?? "");
+  }
+
   async function setPresenza(tipo: TipoPresenza | null) {
     if (!cell) return;
-    const res = await fetch("/api/presenze", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dipendenteId: cell.dipendente.id, data: cell.data, tipo }),
-    });
-    if (!res.ok) {
-      toast.error("Errore salvataggio presenza");
+    if (tipo === "PRESENTE" && oraIngresso && oraUscita && oraIngresso === oraUscita) {
+      toast.error("Ingresso e uscita non possono coincidere");
       return;
     }
-    const data = await res.json();
-    setPresenze((prev) => {
-      const filtered = prev.filter(
-        (p) => !(p.dipendenteId === cell.dipendente.id && p.data === cell.data)
-      );
-      if (!data.presenza) return filtered;
-      return [...filtered, data.presenza];
-    });
-    setCell(null);
+    setSavingPresenza(true);
+    try {
+      const res = await fetch("/api/presenze", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dipendenteId: cell.dipendente.id,
+          data: cell.data,
+          tipo,
+          oraIngresso: tipo === "PRESENTE" && oraIngresso ? oraIngresso : null,
+          oraUscita: tipo === "PRESENTE" && oraUscita ? oraUscita : null,
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Errore salvataggio presenza");
+        return;
+      }
+      const data = await res.json();
+      setPresenze((prev) => {
+        const filtered = prev.filter(
+          (p) => !(p.dipendenteId === cell.dipendente.id && p.data === cell.data)
+        );
+        if (!data.presenza) return filtered;
+        return [...filtered, data.presenza];
+      });
+      setCell(null);
+    } finally {
+      setSavingPresenza(false);
+    }
   }
 
   function openCreate() {
@@ -185,7 +235,7 @@ export default function DipendentiPage() {
           <h1 className="flex items-center gap-2 font-[family-name:var(--font-display)] text-4xl">
             <IdCard className="h-7 w-7" /> Dipendenti
           </h1>
-          <p className="text-sm text-stone-500">Anagrafica e calendario presenze del mese.</p>
+          <p className="text-sm text-stone-500">Anagrafica, presenze e orari di ingresso e uscita.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-xl border border-[var(--line)] bg-white p-1">
@@ -229,7 +279,7 @@ export default function DipendentiPage() {
                     <th
                       key={format(day, "yyyy-MM-dd")}
                       className={cn(
-                        "min-w-[2rem] px-0.5 py-1.5 text-center",
+                        "min-w-[2.35rem] px-0.5 py-1.5 text-center",
                         isWeekend(day) ? "text-stone-400" : "text-stone-600"
                       )}
                     >
@@ -257,19 +307,32 @@ export default function DipendentiPage() {
                     </td>
                     {days.map((day) => {
                       const data = format(day, "yyyy-MM-dd");
-                      const tipo = presenzaMap.get(`${d.id}:${data}`) ?? null;
+                      const presenza = presenzaMap.get(`${d.id}:${data}`);
+                      const tipo = presenza?.tipo ?? null;
                       const meta = TIPI.find((t) => t.tipo === tipo);
+                      const orario =
+                        tipo === "PRESENTE" && presenza?.oraIngresso && presenza?.oraUscita
+                          ? `${presenza.oraIngresso.slice(0, 2)}–${presenza.oraUscita.slice(0, 2)}`
+                          : tipo === "PRESENTE" && (presenza?.oraIngresso || presenza?.oraUscita)
+                            ? presenza.oraIngresso?.slice(0, 2) || presenza.oraUscita?.slice(0, 2)
+                            : null;
                       return (
                         <td key={data} className="p-0.5 text-center">
                           <button
                             type="button"
-                            onClick={() => setCell({ dipendente: d, data, tipo })}
+                            title={
+                              presenza?.oraIngresso || presenza?.oraUscita
+                                ? `${presenza.oraIngresso ?? "—"} – ${presenza.oraUscita ?? "—"}`
+                                : meta?.label
+                            }
+                            onClick={() => openCell(d, data)}
                             className={cn(
-                              "mx-auto flex h-7 w-7 items-center justify-center rounded border text-[10px] font-bold",
+                              "mx-auto flex h-9 w-9 flex-col items-center justify-center rounded border text-[10px] font-bold leading-none",
                               meta?.className ?? (isWeekend(day) ? "border-transparent text-transparent" : "border-transparent text-transparent hover:border-stone-300")
                             )}
                           >
-                            {meta?.short ?? "·"}
+                            <span>{meta?.short ?? "·"}</span>
+                            {orario && <span className="mt-0.5 text-[8px] font-medium">{orario}</span>}
                           </button>
                         </td>
                       );
@@ -307,7 +370,7 @@ export default function DipendentiPage() {
 
       <Dialog open={Boolean(cell)} onClose={() => setCell(null)} title={cell ? `${cell.dipendente.cognome} ${cell.dipendente.nome}` : "Presenza"}>
         {cell && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <p className="text-sm text-stone-500">
               {format(new Date(`${cell.data}T12:00:00`), "EEEE d MMMM yyyy", { locale: it })}
             </p>
@@ -316,16 +379,64 @@ export default function DipendentiPage() {
                 <button
                   key={t.tipo}
                   type="button"
-                  onClick={() => void setPresenza(t.tipo)}
-                  className={cn("rounded-xl border px-3 py-3 text-left", t.className)}
+                  onClick={() => setTipoDraft(t.tipo)}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-left",
+                    t.className,
+                    tipoDraft === t.tipo && "ring-2 ring-[var(--espresso)]"
+                  )}
                 >
                   {t.label}
                 </button>
               ))}
             </div>
-            <Button variant="outline" className="w-full" onClick={() => void setPresenza(null)}>
-              Rimuovi
-            </Button>
+            {tipoDraft === "PRESENTE" && (
+              <div className="space-y-3 rounded-xl border border-[var(--line)] bg-white p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ora-ingresso">Ora ingresso</Label>
+                    <Input
+                      id="ora-ingresso"
+                      type="time"
+                      value={oraIngresso}
+                      onChange={(e) => setOraIngresso(e.target.value)}
+                    />
+                    <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setOraIngresso(adesso())}>
+                      Adesso
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ora-uscita">Ora uscita</Label>
+                    <Input
+                      id="ora-uscita"
+                      type="time"
+                      value={oraUscita}
+                      onChange={(e) => setOraUscita(e.target.value)}
+                    />
+                    <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setOraUscita(adesso())}>
+                      Adesso
+                    </Button>
+                  </div>
+                </div>
+                {oreLavorate(oraIngresso, oraUscita) && (
+                  <p className="text-sm text-stone-600">
+                    Ore lavorate: <span className="font-medium">{oreLavorate(oraIngresso, oraUscita)}</span>
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" disabled={savingPresenza} onClick={() => void setPresenza(null)}>
+                Rimuovi
+              </Button>
+              <Button
+                className="flex-1"
+                disabled={savingPresenza || !tipoDraft}
+                onClick={() => void setPresenza(tipoDraft)}
+              >
+                Salva
+              </Button>
+            </div>
           </div>
         )}
       </Dialog>
