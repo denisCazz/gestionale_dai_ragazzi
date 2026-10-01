@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { publicImagePath } from "./images";
 import {
   COMING_SOON_COPY,
   disponibilitàVoce,
@@ -22,6 +23,7 @@ export type PublicMenuItem = {
   name: string;
   description?: string;
   price?: string;
+  image?: string;
 };
 
 export type PublicMenuSection = {
@@ -67,6 +69,9 @@ export async function getPublicMenu(): Promise<PublicMenu> {
             name: v.nome,
             description: v.descrizione || undefined,
             price: v.prezzo > 0 ? formatPrezzoPubblico(v.prezzo) : undefined,
+            image: v.immagineAggiornata
+              ? publicImagePath(v.id, v.immagineAggiornata)
+              : undefined,
           })),
       };
     }),

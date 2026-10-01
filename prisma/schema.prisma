@@ -48,12 +48,12 @@ model Articolo {
 }
 
 model MovimentoMagazzino {
-  id         String                   @id @default(cuid())
+  id         String                 @id @default(cuid())
   articoloId String
   tipo       TipoMovimentoMagazzino
   quantita   Float
   note       String?
-  createdAt  DateTime                 @default(now())
+  createdAt  DateTime               @default(now())
 
   articolo Articolo @relation(fields: [articoloId], references: [id], onDelete: Cascade)
 
@@ -73,20 +73,32 @@ model CategoriaMenu {
 }
 
 model VoceMenu {
-  id          String   @id @default(cuid())
-  categoriaId String
-  nome        String
-  descrizione String?
-  prezzo      Float
-  attivo      Boolean  @default(true)
-  ordine      Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  categoriaId        String
+  nome               String
+  descrizione        String?
+  prezzo             Float
+  attivo             Boolean   @default(true)
+  ordine             Int       @default(0)
+  immagineAggiornata DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  categoria   CategoriaMenu    @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+  categoria   CategoriaMenu     @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
   ingredienti IngredienteMenu[]
+  immagine    ImmagineVoce?
 
   @@index([categoriaId])
+}
+
+model ImmagineVoce {
+  id         String   @id @default(cuid())
+  voceMenuId String   @unique
+  contenuto  Bytes    @db.MediumBlob
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  voce VoceMenu @relation(fields: [voceMenuId], references: [id], onDelete: Cascade)
 }
 
 model IngredienteMenu {
@@ -102,18 +114,18 @@ model IngredienteMenu {
 }
 
 model Dipendente {
-  id               String    @id @default(cuid())
-  nome             String
-  cognome          String
-  ruolo            String    @default("Sala")
-  telefono         String?
-  email            String?
-  dataAssunzione   DateTime?
-  retribuzione     Float     @default(0)
-  note             String?
-  attivo           Boolean   @default(true)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  nome           String
+  cognome        String
+  ruolo          String    @default("Sala")
+  telefono       String?
+  email          String?
+  dataAssunzione DateTime?
+  retribuzione   Float     @default(0)
+  note           String?
+  attivo         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   presenze Presenza[]
 
@@ -136,23 +148,23 @@ model Presenza {
 }
 
 model CategoriaCassa {
-  id     String              @id @default(cuid())
+  id     String             @id @default(cuid())
   nome   String
   tipo   TipoMovimentoCassa
-  ordine Int                 @default(0)
+  ordine Int                @default(0)
 
   @@unique([tipo, nome])
   @@index([tipo])
 }
 
 model MovimentoCassa {
-  id          String              @id @default(cuid())
+  id          String             @id @default(cuid())
   tipo        TipoMovimentoCassa
   importo     Float
   categoria   String
   descrizione String
   data        DateTime
-  createdAt   DateTime            @default(now())
+  createdAt   DateTime           @default(now())
 
   @@index([data])
   @@index([tipo])

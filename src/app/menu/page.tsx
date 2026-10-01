@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  ImagePlus,
   Pencil,
   Plus,
   Trash2,
@@ -32,6 +33,7 @@ type Voce = {
   descrizione: string | null;
   prezzo: number;
   attivo: boolean;
+  immagineAggiornata: string | null;
   disponibile: boolean;
   mancanti: { nome: string }[];
   categoria: { id: string; nome: string };
@@ -61,6 +63,11 @@ const EMPTY_CAT = {
   pubblicata: true,
 };
 
+function imageSrc(voce: { id: string; immagineAggiornata: string | null }) {
+  if (!voce.immagineAggiornata) return null;
+  return `/api/public/menu/immagini/${voce.id}?v=${new Date(voce.immagineAggiornata).getTime()}`;
+}
+
 export default function MenuPage() {
   const [categorie, setCategorie] = useState<Categoria[]>([]);
   const [articoli, setArticoli] = useState<Articolo[]>([]);
@@ -71,6 +78,10 @@ export default function MenuPage() {
   const [catOpen, setCatOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<Categoria | null>(null);
   const [catForm, setCatForm] = useState(EMPTY_CAT);
+  const [immagineFile, setImmagineFile] = useState<File | null>(null);
+  const [immaginePreview, setImmaginePreview] = useState<string | null>(null);
+  const [rimuoviImmagine, setRimuoviImmagine] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   async function load() {
     try {
@@ -89,9 +100,17 @@ export default function MenuPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soloDisponibili]);
 
+  function resetImmagine(preview: string | null) {
+    setImmagineFile(null);
+    setImmaginePreview(preview);
+    setRimuoviImmagine(false);
+    setFileInputKey((key) => key + 1);
+  }
+
   function openCreate() {
     setEditing(null);
     setForm({ ...EMPTY_VOCE, categoriaId: categorie[0]?.id ?? "" });
+    resetImmagine(null);
     setOpen(true);
   }
 
@@ -107,6 +126,7 @@ export default function MenuPage() {
         quantitaNecessaria: String(i.quantitaNecessaria),
       })),
     });
+    resetImmagine(imageSrc(voce));
     setOpen(true);
   }
 
@@ -149,6 +169,32 @@ export default function MenuPage() {
       toast.error("Errore salvataggio voce");
       return;
     }
+    const saved = (await res.json()) as Voce;
+    const id = saved.id;
+
+    if (rimuoviImmagine && editing?.immagineAggiornata) {
+      const removed = await fetch(`/api/menu/${id}/immagine`, { method: "DELETE" });
+      if (!removed.ok) {
+        toast.error("Voce salvata, ma la foto non è stata rimossa");
+        setEditing(saved);
+        await load();
+        return;
+      }
+    } else if (immagineFile) {
+      const body = new FormData();
+      body.append("file", immagineFile);
+      const uploaded = await fetch(`/api/menu/${id}/immagine`, { method: "POST", body });
+      if (!uploaded.ok) {
+        const data = await uploaded.json().catch(() => ({}));
+        toast.error(
+          typeof data.error === "string" ? data.error : "Voce salvata, ma la foto non è stata caricata"
+        );
+        setEditing(saved);
+        await load();
+        return;
+      }
+    }
+
     toast.success(editing ? "Voce aggiornata" : "Voce creata");
     setOpen(false);
     await load();
@@ -287,7 +333,15 @@ export default function MenuPage() {
                 key={v.id}
                 className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div>
+                <div className="flex min-w-0 items-start gap-3">
+                  {imageSrc(v) ? (
+                    <img
+                      src={imageSrc(v) ?? undefined}
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                    />
+                  ) : null}
+                  <div className="min-w-0">
                   <p className="font-medium">{v.nome}</p>
                   {v.descrizione && <p className="text-sm text-stone-500">{v.descrizione}</p>}
                   <div className="mt-1 flex flex-wrap gap-1">
@@ -299,6 +353,7 @@ export default function MenuPage() {
                         Nascosto · manca {v.mancanti.map((m) => m.nome).join(", ")}
                       </Badge>
                     )}
+                  </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -360,6 +415,53 @@ export default function MenuPage() {
               value={form.descrizione}
               onChange={(e) => setForm({ ...form, descrizione: e.target.value })}
             />
+          </div>
+          <div className="space-y-2">
+            <Label>Foto sul sito</Label>
+            <div className="flex items-center gap-3">
+              {immaginePreview ? (
+                <img
+                  src={immaginePreview}
+                  alt=""
+                  className="h-20 w-20 rounded-xl object-cover"
+                />
+              ) : (
+                <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-[var(--line)] text-stone-400">
+                  <ImagePlus className="h-5 w-5" />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Input
+                  key={fileInputKey}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setImmagineFile(file);
+                    setRimuoviImmagine(false);
+                    setImmaginePreview(file ? URL.createObjectURL(file) : imageSrc(editing ?? { id: "", immagineAggiornata: null }));
+                  }}
+                />
+                {immaginePreview && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setImmagineFile(null);
+                      setImmaginePreview(null);
+                      setRimuoviImmagine(true);
+                      setFileInputKey((key) => key + 1);
+                    }}
+                  >
+                    Rimuovi foto
+                  </Button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-stone-400">
+              JPG, PNG o WebP. Compare accanto alla voce nel menu del sito.
+            </p>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
