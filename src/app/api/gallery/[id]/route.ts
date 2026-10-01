@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { forgetCachedImage } from "@/lib/image-cache";
 import { ImageError, optimizePhoto } from "@/lib/images";
 import { z } from "zod";
 
@@ -30,6 +31,7 @@ export async function PATCH(
     }
     try {
       const image = await optimizePhoto(file);
+      forgetCachedImage(`gallery:${id}`);
       const foto = await prisma.fotoGallery.update({
         where: { id },
         data: {
@@ -85,6 +87,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  forgetCachedImage(`gallery:${id}`);
   await prisma.fotoGallery.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

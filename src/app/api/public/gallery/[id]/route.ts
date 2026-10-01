@@ -1,5 +1,6 @@
 import { corsHeaders } from "@/lib/cors";
 import { prisma } from "@/lib/db";
+import { storeCachedImage, takeCachedImage } from "@/lib/image-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,20 @@ export async function GET(
     return new Response("Non trovata", { status: 404, headers: corsHeaders(req) });
   }
 
+  const headers = {
+    ...corsHeaders(req),
+    "Content-Type": "image/webp",
+    "Cache-Control": "public, max-age=604800, immutable",
+  };
+
   try {
+    const cached = takeCachedImage(`gallery:${id}`);
+    if (cached) {
+      return new Response(Buffer.from(cached), {
+        headers: { ...headers, "Content-Length": String(cached.byteLength) },
+      });
+    }
+
     const foto = await prisma.fotoGallery.findUnique({
       where: { id },
       select: { contenuto: true },
@@ -25,14 +39,10 @@ export async function GET(
       return new Response("Non trovata", { status: 404, headers: corsHeaders(req) });
     }
 
-    const body = Buffer.from(foto.contenuto);
-    return new Response(body, {
-      headers: {
-        ...corsHeaders(req),
-        "Content-Type": "image/webp",
-        "Content-Length": String(body.length),
-        "Cache-Control": "public, max-age=86400",
-      },
+    const body = new Uint8Array(foto.contenuto);
+    storeCachedImage(`gallery:${id}`, body);
+    return new Response(Buffer.from(body), {
+      headers: { ...headers, "Content-Length": String(body.byteLength) },
     });
   } catch (error) {
     console.error(error);
