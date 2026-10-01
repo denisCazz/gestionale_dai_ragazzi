@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["@prisma/client", "prisma", "sharp"],
   outputFileTracingIncludes: {
-    "/*": ["./node_modules/.prisma/**/*"],
+    "/*": ["./node_modules/.prisma/**/*", "./node_modules/sharp/**/*", "./node_modules/@img/**/*"],
   },
   async headers() {
     return [

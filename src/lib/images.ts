@@ -19,11 +19,14 @@ export async function toWebp(file: File) {
   }
 
   try {
-    return await sharp(Buffer.from(await file.arrayBuffer()))
+    const webp = await sharp(Buffer.from(await file.arrayBuffer()))
       .rotate()
       .resize({ width: 1400, height: 1400, fit: "inside", withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer();
+    const bytes = new Uint8Array(webp.byteLength);
+    bytes.set(webp);
+    return bytes;
   } catch {
     throw new ImageError("Impossibile leggere la foto. Usa un JPG, PNG o WebP.");
   }
