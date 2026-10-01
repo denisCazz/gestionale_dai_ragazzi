@@ -101,6 +101,19 @@ model ImmagineVoce {
   voce VoceMenu @relation(fields: [voceMenuId], references: [id], onDelete: Cascade)
 }
 
+model FotoGallery {
+  id        String   @id @default(cuid())
+  alt       String   @default("") @db.VarChar(300)
+  ordine    Int      @default(0)
+  larghezza Int
+  altezza   Int
+  contenuto Bytes    @db.MediumBlob
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ordine])
+}
+
 model IngredienteMenu {
   id                 String @id @default(cuid())
   voceMenuId         String

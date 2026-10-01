@@ -71,7 +71,7 @@ function imageSrc(voce: { id: string; immagineAggiornata: string | null }) {
 export default function MenuPage() {
   const [categorie, setCategorie] = useState<Categoria[]>([]);
   const [articoli, setArticoli] = useState<Articolo[]>([]);
-  const [soloDisponibili, setSoloDisponibili] = useState(true);
+  const [soloDisponibili, setSoloDisponibili] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Voce | null>(null);
   const [form, setForm] = useState(EMPTY_VOCE);
@@ -272,8 +272,8 @@ export default function MenuPage() {
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-4xl">Menu</h1>
           <p className="text-sm text-stone-500">
-            Categorie e titoli finiscono sul sito pubblico. Se manca un prodotto, le voci spariscono
-            dal menu operativo.
+            Categorie e titoli finiscono sul sito pubblico. Se manca un prodotto, la voce resta qui
+            e sparisce solo dal sito.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

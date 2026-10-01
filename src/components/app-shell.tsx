@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Banknote,
+  Images,
   LayoutDashboard,
   LogOut,
   Package,
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/magazzino", label: "Magazzino", icon: Package },
   { href: "/magazzino/scansione", label: "Scanner", icon: ScanLine },
   { href: "/menu", label: "Menu", icon: UtensilsCrossed },
+  { href: "/gallery", label: "Gallery", icon: Images },
   { href: "/dipendenti", label: "Dipendenti", icon: Users },
   { href: "/cassa", label: "Cassa", icon: Banknote },
 ];
@@ -97,7 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="mx-auto max-w-7xl px-4 py-5 pb-24 sm:px-6 sm:py-8">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-[var(--line)] bg-[var(--espresso)] text-[var(--cream)] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-[var(--line)] bg-[var(--espresso)] text-[var(--cream)] lg:hidden">
         {NAV.filter((n) => n.href !== "/magazzino/scansione").map((item) => {
           const active =
             item.href === "/"

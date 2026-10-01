@@ -43,14 +43,26 @@ export async function PATCH(
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const articolo = await prisma.articolo.update({
-    where: { id },
-    data: {
-      ...parsed.data,
-      ean: parsed.data.ean === undefined ? undefined : parsed.data.ean?.trim() || null,
-    },
-  });
-  return NextResponse.json(serializeArticolo(articolo));
+  try {
+    const articolo = await prisma.articolo.update({
+      where: { id },
+      data: {
+        ...parsed.data,
+        ean: parsed.data.ean === undefined ? undefined : parsed.data.ean?.trim() || null,
+      },
+    });
+    return NextResponse.json(serializeArticolo(articolo));
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("Unique constraint") || message.includes("unique")) {
+      const field = message.includes("ean") ? "EAN" : "Codice";
+      return NextResponse.json(
+        { error: `${field} già presente in magazzino` },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 }
 
 export async function DELETE(

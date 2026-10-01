@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDateTime, formatQty } from "@/lib/format";
+import { fetchJson } from "@/lib/http";
 
 type Articolo = {
   id: string;
@@ -31,6 +32,8 @@ export default function ArticoloPage({ params }: { params: Promise<{ id: string 
   const [articolo, setArticolo] = useState<Articolo | null>(null);
   const [qty, setQty] = useState("1");
   const [soglia, setSoglia] = useState("");
+  const [ean, setEan] = useState("");
+  const [savingEan, setSavingEan] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/articoli/${id}`);
@@ -38,6 +41,7 @@ export default function ArticoloPage({ params }: { params: Promise<{ id: string 
       const data = await res.json();
       setArticolo(data);
       setSoglia(String(data.sogliaMinima));
+      setEan(data.ean ?? "");
     }
   }
 
@@ -62,6 +66,23 @@ export default function ArticoloPage({ params }: { params: Promise<{ id: string 
     toast.success("Movimento registrato");
     setQty("1");
     await load();
+  }
+
+  async function saveEan() {
+    setSavingEan(true);
+    try {
+      await fetchJson(`/api/articoli/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ean: ean.trim() || null }),
+      });
+      toast.success(ean.trim() ? "EAN aggiornato" : "EAN rimosso");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Errore aggiornamento EAN");
+    } finally {
+      setSavingEan(false);
+    }
   }
 
   async function saveSoglia() {
@@ -118,6 +139,23 @@ export default function ArticoloPage({ params }: { params: Promise<{ id: string 
           </div>
         </div>
       )}
+
+      <div className="rounded-2xl border border-[var(--line)] bg-white p-4 space-y-3">
+        <Label>Codice EAN</Label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            className="font-mono"
+            inputMode="numeric"
+            placeholder="Nessun codice"
+            value={ean}
+            onChange={(e) => setEan(e.target.value)}
+          />
+          <Button variant="outline" onClick={() => void saveEan()} disabled={savingEan}>
+            {savingEan ? "Salvataggio…" : "Salva EAN"}
+          </Button>
+        </div>
+        <p className="text-xs text-stone-500">Lascia il campo vuoto per togliere il codice a barre.</p>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-[var(--line)] bg-white p-4 space-y-3">
