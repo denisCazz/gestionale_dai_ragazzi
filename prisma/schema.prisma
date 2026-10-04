@@ -152,6 +152,8 @@ model Presenza {
   tipo         TipoPresenza
   oraIngresso  String?
   oraUscita    String?
+  oraIngresso2 String?
+  oraUscita2   String?
   note         String?
 
   dipendente Dipendente @relation(fields: [dipendenteId], references: [id], onDelete: Cascade)

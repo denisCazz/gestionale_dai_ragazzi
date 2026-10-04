@@ -23,6 +23,7 @@ import { Select, Textarea } from "@/components/ui/select";
 import { formatEuro } from "@/lib/format";
 import { RUOLI_DIPENDENTE } from "@/lib/menu";
 import { fetchJson } from "@/lib/http";
+import { fasciaBreve, normalizzaOrari, oreLavorateLabel } from "@/lib/turni";
 import { cn } from "@/lib/utils";
 
 type TipoPresenza = "PRESENTE" | "FERIE" | "MALATTIA" | "RIPOSO";
@@ -44,18 +45,20 @@ type Presenza = {
   tipo: TipoPresenza;
   oraIngresso: string | null;
   oraUscita: string | null;
+  oraIngresso2?: string | null;
+  oraUscita2?: string | null;
 };
 
-function oreLavorate(ingresso: string, uscita: string) {
-  if (!ingresso || !uscita) return null;
-  const [ih, im] = ingresso.split(":").map(Number);
-  const [uh, um] = uscita.split(":").map(Number);
-  if ([ih, im, uh, um].some((n) => Number.isNaN(n))) return null;
-  let minuti = uh * 60 + um - (ih * 60 + im);
-  if (minuti < 0) minuti += 24 * 60;
-  const ore = Math.floor(minuti / 60);
-  const resto = minuti % 60;
-  return resto ? `${ore}h ${resto}m` : `${ore}h`;
+function titoloOrario(presenza: Presenza) {
+  const fasce = [
+    presenza.oraIngresso || presenza.oraUscita
+      ? `${presenza.oraIngresso ?? "—"} – ${presenza.oraUscita ?? "—"}`
+      : null,
+    presenza.oraIngresso2 || presenza.oraUscita2
+      ? `${presenza.oraIngresso2 ?? "—"} – ${presenza.oraUscita2 ?? "—"}`
+      : null,
+  ].filter(Boolean);
+  return fasce.join(" · ");
 }
 
 function adesso() {
@@ -89,6 +92,9 @@ export default function DipendentiPage() {
   const [tipoDraft, setTipoDraft] = useState<TipoPresenza | null>(null);
   const [oraIngresso, setOraIngresso] = useState("");
   const [oraUscita, setOraUscita] = useState("");
+  const [doppioTurno, setDoppioTurno] = useState(false);
+  const [oraIngresso2, setOraIngresso2] = useState("");
+  const [oraUscita2, setOraUscita2] = useState("");
   const [savingPresenza, setSavingPresenza] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Dipendente | null>(null);
@@ -132,13 +138,32 @@ export default function DipendentiPage() {
     setTipoDraft(presenza?.tipo ?? null);
     setOraIngresso(presenza?.oraIngresso ?? "");
     setOraUscita(presenza?.oraUscita ?? "");
+    setDoppioTurno(Boolean(presenza?.oraIngresso2 || presenza?.oraUscita2));
+    setOraIngresso2(presenza?.oraIngresso2 ?? "");
+    setOraUscita2(presenza?.oraUscita2 ?? "");
   }
 
   async function setPresenza(tipo: TipoPresenza | null) {
     if (!cell) return;
-    if (tipo === "PRESENTE" && oraIngresso && oraUscita && oraIngresso === oraUscita) {
-      toast.error("Ingresso e uscita non possono coincidere");
-      return;
+    let orari = {
+      oraIngresso: null as string | null,
+      oraUscita: null as string | null,
+      oraIngresso2: null as string | null,
+      oraUscita2: null as string | null,
+    };
+    if (tipo === "PRESENTE") {
+      const normalizzati = normalizzaOrari({
+        oraIngresso,
+        oraUscita,
+        oraIngresso2: doppioTurno ? oraIngresso2 : null,
+        oraUscita2: doppioTurno ? oraUscita2 : null,
+        doppio: doppioTurno,
+      });
+      if ("error" in normalizzati) {
+        toast.error(normalizzati.error);
+        return;
+      }
+      orari = normalizzati.orari;
     }
     setSavingPresenza(true);
     try {
@@ -149,12 +174,12 @@ export default function DipendentiPage() {
           dipendenteId: cell.dipendente.id,
           data: cell.data,
           tipo,
-          oraIngresso: tipo === "PRESENTE" && oraIngresso ? oraIngresso : null,
-          oraUscita: tipo === "PRESENTE" && oraUscita ? oraUscita : null,
+          ...orari,
         }),
       });
       if (!res.ok) {
-        toast.error("Errore salvataggio presenza");
+        const body = await res.json().catch(() => null);
+        toast.error(typeof body?.error === "string" ? body.error : "Errore salvataggio presenza");
         return;
       }
       const data = await res.json();
@@ -227,6 +252,16 @@ export default function DipendentiPage() {
     setEditing(null);
     await load(mese);
   }
+
+  const oreLabel =
+    tipoDraft === "PRESENTE"
+      ? oreLavorateLabel({
+          oraIngresso: oraIngresso || null,
+          oraUscita: oraUscita || null,
+          oraIngresso2: doppioTurno ? oraIngresso2 || null : null,
+          oraUscita2: doppioTurno ? oraUscita2 || null : null,
+        })
+      : null;
 
   return (
     <div className="space-y-5">
@@ -310,29 +345,31 @@ export default function DipendentiPage() {
                       const presenza = presenzaMap.get(`${d.id}:${data}`);
                       const tipo = presenza?.tipo ?? null;
                       const meta = TIPI.find((t) => t.tipo === tipo);
-                      const orario =
-                        tipo === "PRESENTE" && presenza?.oraIngresso && presenza?.oraUscita
-                          ? `${presenza.oraIngresso.slice(0, 2)}–${presenza.oraUscita.slice(0, 2)}`
-                          : tipo === "PRESENTE" && (presenza?.oraIngresso || presenza?.oraUscita)
-                            ? presenza.oraIngresso?.slice(0, 2) || presenza.oraUscita?.slice(0, 2)
-                            : null;
+                      const fasce =
+                        tipo === "PRESENTE" && presenza
+                          ? [
+                              fasciaBreve(presenza.oraIngresso, presenza.oraUscita),
+                              fasciaBreve(presenza.oraIngresso2, presenza.oraUscita2),
+                            ].filter((fascia): fascia is string => Boolean(fascia))
+                          : [];
                       return (
                         <td key={data} className="p-0.5 text-center">
                           <button
                             type="button"
-                            title={
-                              presenza?.oraIngresso || presenza?.oraUscita
-                                ? `${presenza.oraIngresso ?? "—"} – ${presenza.oraUscita ?? "—"}`
-                                : meta?.label
-                            }
+                            title={presenza ? titoloOrario(presenza) || meta?.label : meta?.label}
                             onClick={() => openCell(d, data)}
                             className={cn(
-                              "mx-auto flex h-9 w-9 flex-col items-center justify-center rounded border text-[10px] font-bold leading-none",
+                              "mx-auto flex w-9 flex-col items-center justify-center rounded border text-[10px] font-bold leading-none",
+                              fasce.length > 1 ? "min-h-11 py-0.5" : "h-9",
                               meta?.className ?? (isWeekend(day) ? "border-transparent text-transparent" : "border-transparent text-transparent hover:border-stone-300")
                             )}
                           >
                             <span>{meta?.short ?? "·"}</span>
-                            {orario && <span className="mt-0.5 text-[8px] font-medium">{orario}</span>}
+                            {fasce.map((fascia, index) => (
+                              <span key={`${fascia}-${index}`} className="mt-0.5 text-[8px] font-medium">
+                                {fascia}
+                              </span>
+                            ))}
                           </button>
                         </td>
                       );
@@ -418,9 +455,49 @@ export default function DipendentiPage() {
                     </Button>
                   </div>
                 </div>
-                {oreLavorate(oraIngresso, oraUscita) && (
+                <button
+                  type="button"
+                  onClick={() => setDoppioTurno((attivo) => !attivo)}
+                  className={cn(
+                    "w-full rounded-xl border px-3 py-2 text-left text-sm font-medium",
+                    doppioTurno
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                      : "border-[var(--line)] text-stone-600"
+                  )}
+                >
+                  {doppioTurno ? "Doppio turno attivo" : "Aggiungi secondo turno"}
+                </button>
+                {doppioTurno && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ora-ingresso-2">Secondo ingresso</Label>
+                      <Input
+                        id="ora-ingresso-2"
+                        type="time"
+                        value={oraIngresso2}
+                        onChange={(e) => setOraIngresso2(e.target.value)}
+                      />
+                      <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setOraIngresso2(adesso())}>
+                        Adesso
+                      </Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ora-uscita-2">Seconda uscita</Label>
+                      <Input
+                        id="ora-uscita-2"
+                        type="time"
+                        value={oraUscita2}
+                        onChange={(e) => setOraUscita2(e.target.value)}
+                      />
+                      <Button type="button" variant="ghost" size="sm" className="px-0" onClick={() => setOraUscita2(adesso())}>
+                        Adesso
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {oreLabel && (
                   <p className="text-sm text-stone-600">
-                    Ore lavorate: <span className="font-medium">{oreLavorate(oraIngresso, oraUscita)}</span>
+                    Ore lavorate: <span className="font-medium">{oreLabel}</span>
                   </p>
                 )}
               </div>

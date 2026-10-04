@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { normalizzaOrari } from "@/lib/turni";
 import { z } from "zod";
 
 export async function GET(req: Request) {
@@ -29,23 +30,32 @@ export async function PUT(req: Request) {
       tipo: z.enum(["PRESENTE", "FERIE", "MALATTIA", "RIPOSO"]).nullable(),
       oraIngresso: oraSchema,
       oraUscita: oraSchema,
+      oraIngresso2: oraSchema,
+      oraUscita2: oraSchema,
     })
     .safeParse(await req.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "Dati presenza non validi" }, { status: 400 });
   }
   const { dipendenteId, data, tipo } = parsed.data;
   if (!tipo) {
     await prisma.presenza.deleteMany({ where: { dipendenteId, data } });
     return NextResponse.json({ presenza: null });
   }
-  const orari =
-    tipo === "PRESENTE"
-      ? {
-          oraIngresso: parsed.data.oraIngresso || null,
-          oraUscita: parsed.data.oraUscita || null,
-        }
-      : { oraIngresso: null, oraUscita: null };
+  const orariVuoti = {
+    oraIngresso: null,
+    oraUscita: null,
+    oraIngresso2: null,
+    oraUscita2: null,
+  };
+  let orari = orariVuoti;
+  if (tipo === "PRESENTE") {
+    const normalizzati = normalizzaOrari(parsed.data);
+    if ("error" in normalizzati) {
+      return NextResponse.json({ error: normalizzati.error }, { status: 400 });
+    }
+    orari = normalizzati.orari;
+  }
   const presenza = await prisma.presenza.upsert({
     where: { dipendenteId_data: { dipendenteId, data } },
     create: { dipendenteId, data, tipo, ...orari },
