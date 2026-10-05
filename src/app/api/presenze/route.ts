@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { normalizzaOrari } from "@/lib/turni";
+import { normalizzaOrari, type OrariPresenza } from "@/lib/turni";
 import { z } from "zod";
 
 export async function GET(req: Request) {
@@ -42,13 +42,13 @@ export async function PUT(req: Request) {
     await prisma.presenza.deleteMany({ where: { dipendenteId, data } });
     return NextResponse.json({ presenza: null });
   }
-  const orariVuoti = {
+  const orariVuoti: OrariPresenza = {
     oraIngresso: null,
     oraUscita: null,
     oraIngresso2: null,
     oraUscita2: null,
   };
-  let orari = orariVuoti;
+  let orari: OrariPresenza = orariVuoti;
   if (tipo === "PRESENTE") {
     const normalizzati = normalizzaOrari(parsed.data);
     if ("error" in normalizzati) {
