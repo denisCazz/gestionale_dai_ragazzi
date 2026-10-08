@@ -20,6 +20,7 @@ type MovimentoBase = {
   tipo: TipoCassa;
   categoria: string;
   importo: number;
+  descrizione: string;
 };
 
 export function roundEuro(value: number) {
