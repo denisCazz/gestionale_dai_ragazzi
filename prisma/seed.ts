@@ -206,8 +206,8 @@ async function main() {
   }
 
   for (const [tipo, nomi] of [
-    ["ENTRATA", ["Vendite banco", "Aperitivo", "Pausa pranzo", "Colazione", "Altro"]],
-    ["USCITA", ["Fornitori", "Stipendi", "Utenze", "Affitto", "Manutenzione", "Altro"]],
+    ["ENTRATA", ["Carte - Bancomat", "Satispay", "Contanti"]],
+    ["USCITA", ["Contanti"]],
   ] as const) {
     let ordine = 1;
     for (const nome of nomi) {
@@ -217,20 +217,28 @@ async function main() {
   }
 
   const oggi = new Date();
-  const movimentiCassa: { tipo: TipoMovimentoCassa; importo: number; categoria: string; descrizione: string; daysAgo: number }[] = [
-    { tipo: "ENTRATA", importo: 420, categoria: "Colazione", descrizione: "Incasso colazione", daysAgo: 0 },
-    { tipo: "ENTRATA", importo: 680, categoria: "Aperitivo", descrizione: "Incasso aperitivo serale", daysAgo: 0 },
-    { tipo: "USCITA", importo: 85, categoria: "Fornitori", descrizione: "Pane e brioche del giorno", daysAgo: 0 },
-    { tipo: "ENTRATA", importo: 390, categoria: "Colazione", descrizione: "Incasso colazione", daysAgo: 1 },
-    { tipo: "ENTRATA", importo: 540, categoria: "Pausa pranzo", descrizione: "Incasso pranzo", daysAgo: 1 },
-    { tipo: "ENTRATA", importo: 710, categoria: "Aperitivo", descrizione: "Incasso aperitivo", daysAgo: 1 },
-    { tipo: "USCITA", importo: 210, categoria: "Fornitori", descrizione: "Bevande e mixology", daysAgo: 2 },
-    { tipo: "ENTRATA", importo: 860, categoria: "Aperitivo", descrizione: "Venerdì buffet", daysAgo: 2 },
-    { tipo: "USCITA", importo: 1450, categoria: "Stipendi", descrizione: "Acconto stipendi", daysAgo: 5 },
-    { tipo: "USCITA", importo: 320, categoria: "Utenze", descrizione: "Bolletta luce", daysAgo: 7 },
-    { tipo: "ENTRATA", importo: 510, categoria: "Vendite banco", descrizione: "Incasso banco", daysAgo: 3 },
-    { tipo: "ENTRATA", importo: 475, categoria: "Pausa pranzo", descrizione: "Incasso pranzo", daysAgo: 4 },
+  const giornate = [
+    { daysAgo: 0, carte: 640, satispay: 120, contanti: 340, uscite: 85 },
+    { daysAgo: 1, carte: 820, satispay: 95, contanti: 725, uscite: 40 },
+    { daysAgo: 2, carte: 560, satispay: 80, contanti: 210, uscite: 210 },
+    { daysAgo: 3, carte: 390, satispay: 45, contanti: 510, uscite: 0 },
+    { daysAgo: 4, carte: 310, satispay: 60, contanti: 475, uscite: 0 },
+    { daysAgo: 5, carte: 480, satispay: 70, contanti: 260, uscite: 1450 },
+    { daysAgo: 7, carte: 350, satispay: 40, contanti: 190, uscite: 320 },
   ];
+  const movimentiCassa: { tipo: TipoMovimentoCassa; importo: number; categoria: string; descrizione: string; daysAgo: number }[] = [];
+  for (const giorno of giornate) {
+    const voci = [
+      { tipo: "ENTRATA" as const, importo: giorno.carte, categoria: "Carte - Bancomat", descrizione: "Incasso carte e bancomat" },
+      { tipo: "ENTRATA" as const, importo: giorno.satispay, categoria: "Satispay", descrizione: "Incasso Satispay" },
+      { tipo: "ENTRATA" as const, importo: giorno.contanti, categoria: "Contanti", descrizione: "Incasso contanti" },
+      { tipo: "USCITA" as const, importo: giorno.uscite, categoria: "Contanti", descrizione: "Uscita contanti" },
+    ];
+    for (const voce of voci) {
+      if (voce.importo <= 0) continue;
+      movimentiCassa.push({ ...voce, daysAgo: giorno.daysAgo });
+    }
+  }
 
   for (const m of movimentiCassa) {
     await prisma.movimentoCassa.create({

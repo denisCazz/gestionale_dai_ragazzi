@@ -1,18 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDownRight, ArrowUpRight, Plus, Tags, Trash2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Trash2 } from "lucide-react";
 import { DateRangeFilter } from "@/components/date-range-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, Textarea } from "@/components/ui/select";
-import { formatDateTime, formatEuro } from "@/lib/format";
+import { Textarea } from "@/components/ui/select";
+import { formatDate, formatEuro, dayKey } from "@/lib/format";
 import { parseRange, toInputDate, type DateRange } from "@/lib/dates";
 import { fetchJson } from "@/lib/http";
+import {
+  accumula,
+  noteGiornata,
+  ripartisci,
+  roundEuro,
+  saldoGiornata,
+  type ImportiGiornata,
+  type TotaliGiornata,
+} from "@/lib/cassa-giornata";
 import { cn } from "@/lib/utils";
 
 type Movimento = {
@@ -24,33 +32,60 @@ type Movimento = {
   data: string;
 };
 
-type CategoriaCassa = { id: string; nome: string; tipo: "ENTRATA" | "USCITA"; ordine: number };
-type CategorieByTipo = { ENTRATA: CategoriaCassa[]; USCITA: CategoriaCassa[] };
+type FormImporti = {
+  carte: string;
+  satispay: string;
+  contanti: string;
+  usciteContanti: string;
+  noteEntrate: string;
+  noteUscite: string;
+};
 
-const EMPTY_CATEGORIE: CategorieByTipo = { ENTRATA: [], USCITA: [] };
+type Giornata = ImportiGiornata & {
+  data: string;
+  note?: { entrate?: string; uscite?: string };
+};
+
+const ZERO_FORM: FormImporti = {
+  carte: "0",
+  satispay: "0",
+  contanti: "0",
+  usciteContanti: "0",
+  noteEntrate: "",
+  noteUscite: "",
+};
+
+function toAmountInput(value: number) {
+  const rounded = roundEuro(value);
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+}
+
+function parseAmount(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return 0;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return roundEuro(amount);
+}
+
+function formFromImporti(importi: Giornata): FormImporti {
+  return {
+    carte: toAmountInput(importi.entrate.carte),
+    satispay: toAmountInput(importi.entrate.satispay),
+    contanti: toAmountInput(importi.entrate.contanti),
+    usciteContanti: toAmountInput(importi.uscite.contanti),
+    noteEntrate: importi.note?.entrate ?? "",
+    noteUscite: importi.note?.uscite ?? "",
+  };
+}
 
 export default function CassaPage() {
   const [range, setRange] = useState<DateRange>(() => parseRange(null, null));
   const [movimenti, setMovimenti] = useState<Movimento[]>([]);
   const [totale, setTotale] = useState({ entrate: 0, uscite: 0, saldo: 0 });
-  const [categorieByTipo, setCategorieByTipo] = useState<CategorieByTipo>(EMPTY_CATEGORIE);
-  const [open, setOpen] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
-  const [nuovaCat, setNuovaCat] = useState({ nome: "", tipo: "ENTRATA" as "ENTRATA" | "USCITA" });
-  const [form, setForm] = useState({
-    tipo: "ENTRATA" as "ENTRATA" | "USCITA",
-    importo: "",
-    categoria: "",
-    descrizione: "",
-    data: toInputDate(new Date()),
-  });
-
-  async function loadCategorie() {
-    const data = await fetchJson<{ categorie?: CategorieByTipo }>("/api/cassa/categorie");
-    const next: CategorieByTipo = data.categorie ?? EMPTY_CATEGORIE;
-    setCategorieByTipo(next);
-    return next;
-  }
+  const [giorno, setGiorno] = useState(() => toInputDate(new Date()));
+  const [form, setForm] = useState<FormImporti>(ZERO_FORM);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     const params = new URLSearchParams({
@@ -66,55 +101,96 @@ export default function CassaPage() {
   }
 
   useEffect(() => {
-    void loadCategorie().catch(() => {
-      toast.error("Errore caricamento categorie");
-    });
-  }, []);
-
-  useEffect(() => {
     void load().catch(() => {
       toast.error("Errore caricamento cassa");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
-  const categorie = categorieByTipo[form.tipo];
+  useEffect(() => {
+    let cancelled = false;
+    void fetchJson<Giornata>(`/api/cassa/giornata?data=${giorno}`)
+      .then((data) => {
+        if (!cancelled) setForm(formFromImporti(data));
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Errore caricamento giornata");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [giorno]);
 
-  function firstCategoria(tipo: "ENTRATA" | "USCITA", list?: CategorieByTipo) {
-    return (list ?? categorieByTipo)[tipo][0]?.nome ?? "";
-  }
+  const giorni = useMemo(() => {
+    const byDay = new Map<string, { data: string; movimenti: Movimento[]; totali: TotaliGiornata }>();
+    for (const movimento of movimenti) {
+      const data = dayKey(new Date(movimento.data));
+      const row = byDay.get(data) ?? { data, movimenti: [], totali: accumula([]) };
+      row.movimenti.push(movimento);
+      byDay.set(data, row);
+    }
+    return [...byDay.values()]
+      .map((row) => ({ ...row, totali: accumula(row.movimenti) }))
+      .sort((a, b) => b.data.localeCompare(a.data));
+  }, [movimenti]);
+
+  const hasAltre = giorni.some((row) => row.totali.altreEntrate > 0 || row.totali.altreUscite > 0);
+  const hasNoteEntrate = giorni.some((row) => noteGiornata(row.movimenti, "ENTRATA").length > 0);
+  const hasNoteUscite = giorni.some((row) => noteGiornata(row.movimenti, "USCITA").length > 0);
+  const altri = movimenti.filter((movimento) => {
+    const quote = ripartisci(movimento);
+    const classificati = quote.carte + quote.satispay + quote.contanti + quote.uscite;
+    return classificati === 0 && (quote.altreEntrate > 0 || quote.altreUscite > 0);
+  });
+
+  const bozza = {
+    entrate: {
+      carte: parseAmount(form.carte) ?? 0,
+      satispay: parseAmount(form.satispay) ?? 0,
+      contanti: parseAmount(form.contanti) ?? 0,
+    },
+    uscite: { contanti: parseAmount(form.usciteContanti) ?? 0 },
+    altreEntrate: 0,
+    altreUscite: 0,
+  };
+  const bozzaEntrate = roundEuro(bozza.entrate.carte + bozza.entrate.satispay + bozza.entrate.contanti);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.categoria) {
-      toast.error("Aggiungi prima una categoria");
+    const carte = parseAmount(form.carte);
+    const satispay = parseAmount(form.satispay);
+    const contanti = parseAmount(form.contanti);
+    const usciteContanti = parseAmount(form.usciteContanti);
+    if (carte === null || satispay === null || contanti === null || usciteContanti === null) {
+      toast.error("Gli importi devono essere numeri maggiori o uguali a zero");
       return;
     }
-    const res = await fetch("/api/cassa", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo: form.tipo,
-        importo: Number(form.importo),
-        categoria: form.categoria,
-        descrizione: form.descrizione,
-        data: `${form.data}T12:00:00`,
-      }),
-    });
-    if (!res.ok) {
-      toast.error("Controlla importo e descrizione");
-      return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/cassa/giornata", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: giorno,
+          entrate: { carte, satispay, contanti },
+          uscite: { contanti: usciteContanti },
+          note: {
+            entrate: form.noteEntrate.trim(),
+            uscite: form.noteUscite.trim(),
+          },
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Controlla data e importi");
+        return;
+      }
+      const saved = (await res.json()) as Giornata;
+      setForm(formFromImporti(saved));
+      toast.success("Giornata registrata");
+      await load();
+    } finally {
+      setSaving(false);
     }
-    toast.success("Movimento registrato");
-    setOpen(false);
-    setForm({
-      tipo: "ENTRATA",
-      importo: "",
-      categoria: firstCategoria("ENTRATA"),
-      descrizione: "",
-      data: toInputDate(new Date()),
-    });
-    await load();
   }
 
   async function remove(id: string) {
@@ -122,81 +198,105 @@ export default function CassaPage() {
     await fetch(`/api/cassa/${id}`, { method: "DELETE" });
     toast.success("Eliminato");
     await load();
-  }
-
-  async function addCategoria(e: React.FormEvent) {
-    e.preventDefault();
-    const res = await fetch("/api/cassa/categorie", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(nuovaCat),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      toast.error(typeof data.error === "string" ? data.error : "Errore categoria");
-      return;
-    }
-    toast.success("Categoria aggiunta");
-    setNuovaCat({ nome: "", tipo: nuovaCat.tipo });
-    const next = await loadCategorie();
-    if (!form.categoria || form.tipo === nuovaCat.tipo) {
-      setForm((f) => ({
-        ...f,
-        categoria: f.categoria || firstCategoria(f.tipo, next),
-      }));
-    }
-  }
-
-  async function removeCategoria(c: CategoriaCassa) {
-    if (
-      !confirm(
-        `Eliminare la categoria «${c.nome}»? I movimenti già registrati restano con questa etichetta.`
-      )
-    ) {
-      return;
-    }
-    const res = await fetch(`/api/cassa/categorie/${c.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      toast.error("Errore eliminazione categoria");
-      return;
-    }
-    toast.success("Categoria eliminata");
-    const next = await loadCategorie();
-    setForm((f) => {
-      if (f.tipo !== c.tipo || f.categoria !== c.nome) return f;
-      return { ...f, categoria: firstCategoria(f.tipo, next) };
-    });
+    const data = await fetchJson<Giornata>(`/api/cassa/giornata?data=${giorno}`);
+    setForm(formFromImporti(data));
   }
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-[family-name:var(--font-display)] text-4xl">Cassa</h1>
-          <p className="text-sm text-stone-500">Entrate e uscite inserite a mano, con dettaglio.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setCatOpen(true)}>
-            <Tags className="h-4 w-4" />
-            Categorie
-          </Button>
-          <Button
-            onClick={() => {
-              setForm((f) => ({
-                ...f,
-                data: toInputDate(new Date()),
-                categoria: f.categoria || firstCategoria(f.tipo),
-              }));
-              setOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Nuovo movimento
-          </Button>
-        </div>
+      <div>
+        <h1 className="font-[family-name:var(--font-display)] text-4xl">Cassa</h1>
+        <p className="text-sm text-stone-500">
+          Entrate divise per carte, Satispay e contanti. Uscite solo in contanti.
+        </p>
       </div>
 
-      <DateRangeFilter range={range} onChange={setRange} />
+      <form onSubmit={save} className="space-y-4 rounded-2xl border border-[var(--line)] bg-white p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1.5">
+            <Label htmlFor="giorno">Giorno</Label>
+            <Input
+              id="giorno"
+              type="date"
+              required
+              value={giorno}
+              onChange={(e) => setGiorno(e.target.value)}
+              className="w-full sm:w-48"
+            />
+            <p className="text-xs text-stone-400">Predefinito: oggi. Puoi scegliere qualsiasi giorno.</p>
+          </div>
+          <div className="text-sm text-stone-500">
+            <p>
+              Entrate <span className="font-semibold text-emerald-700 tabular-nums">{formatEuro(bozzaEntrate)}</span>
+            </p>
+            <p>
+              Uscite{" "}
+              <span className="font-semibold text-red-700 tabular-nums">{formatEuro(bozza.uscite.contanti)}</span>
+            </p>
+            <p>
+              Saldo{" "}
+              <span
+                className={cn(
+                  "font-semibold tabular-nums",
+                  saldoGiornata(bozza) >= 0 ? "text-emerald-700" : "text-red-700"
+                )}
+              >
+                {formatEuro(saldoGiornata(bozza))}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+            <h2 className="text-sm font-medium text-emerald-800">Entrate</h2>
+            <AmountField
+              id="carte"
+              label="Carte - Bancomat"
+              value={form.carte}
+              onChange={(carte) => setForm((current) => ({ ...current, carte }))}
+            />
+            <AmountField
+              id="satispay"
+              label="Satispay"
+              value={form.satispay}
+              onChange={(satispay) => setForm((current) => ({ ...current, satispay }))}
+            />
+            <AmountField
+              id="contanti-entrate"
+              label="Contanti"
+              value={form.contanti}
+              onChange={(contanti) => setForm((current) => ({ ...current, contanti }))}
+            />
+            <NoteField
+              id="note-entrate"
+              value={form.noteEntrate}
+              onChange={(noteEntrate) => setForm((current) => ({ ...current, noteEntrate }))}
+            />
+          </section>
+
+          <section className="space-y-3 rounded-xl border border-red-100 bg-red-50/40 p-4">
+            <h2 className="text-sm font-medium text-red-800">Uscite</h2>
+            <AmountField
+              id="contanti-uscite"
+              label="Contanti"
+              value={form.usciteContanti}
+              onChange={(usciteContanti) => setForm((current) => ({ ...current, usciteContanti }))}
+            />
+            <NoteField
+              id="note-uscite"
+              value={form.noteUscite}
+              onChange={(noteUscite) => setForm((current) => ({ ...current, noteUscite }))}
+            />
+          </section>
+        </div>
+
+        <div className="flex justify-end">
+          <Button type="submit" disabled={saving || !giorno}>
+            {saving ? "Salvataggio…" : "Registra giornata"}
+          </Button>
+        </div>
+      </form>
 
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
@@ -215,203 +315,219 @@ export default function CassaPage() {
         </div>
       </section>
 
+      <div className="space-y-3">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl">Pregresso</h2>
+        <DateRangeFilter range={range} onChange={setRange} />
+      </div>
+
       <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white">
-        {movimenti.length === 0 ? (
+        {giorni.length === 0 ? (
           <p className="p-10 text-center text-sm text-stone-400">Nessun movimento nel periodo.</p>
         ) : (
-          <ul className="divide-y divide-[var(--line)]">
-            {movimenti.map((m) => (
-              <li key={m.id} className="flex items-center gap-3 px-4 py-3">
-                <span
-                  className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full",
-                    m.tipo === "ENTRATA" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
-                  )}
-                >
-                  {m.tipo === "ENTRATA" ? (
-                    <ArrowUpRight className="h-4 w-4" />
-                  ) : (
-                    <ArrowDownRight className="h-4 w-4" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{m.descrizione}</p>
-                  <p className="text-xs text-stone-400">
-                    {formatDateTime(m.data)} · {m.categoria}
-                  </p>
-                </div>
-                <Badge tone={m.tipo === "ENTRATA" ? "ok" : "danger"}>{m.tipo}</Badge>
-                <span
-                  className={cn(
-                    "w-28 text-right font-semibold tabular-nums",
-                    m.tipo === "ENTRATA" ? "text-emerald-700" : "text-red-700"
-                  )}
-                >
-                  {m.tipo === "ENTRATA" ? "+" : "−"}
-                  {formatEuro(m.importo)}
-                </span>
-                <Button variant="ghost" size="icon" onClick={() => void remove(m.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-[var(--line)] bg-[var(--paper)] text-left text-xs uppercase tracking-wide text-stone-500">
+                  <th rowSpan={2} className="px-3 py-2 align-bottom">
+                    Giorno
+                  </th>
+                  <th colSpan={hasNoteEntrate ? 4 : 3} className="px-3 py-2 text-center text-emerald-700">
+                    Entrate
+                  </th>
+                  <th colSpan={hasNoteUscite ? 2 : 1} className="px-3 py-2 text-center text-red-700">
+                    Uscite
+                  </th>
+                  {hasAltre ? (
+                    <th colSpan={2} className="px-3 py-2 text-center">
+                      Altri movimenti
+                    </th>
+                  ) : null}
+                  <th rowSpan={2} className="px-3 py-2 text-right align-bottom">
+                    Saldo
+                  </th>
+                </tr>
+                <tr className="border-b border-[var(--line)] bg-[var(--paper)] text-left text-xs text-stone-500">
+                  <th className="px-3 py-2 text-right font-medium">Carte - Bancomat</th>
+                  <th className="px-3 py-2 text-right font-medium">Satispay</th>
+                  <th className="px-3 py-2 text-right font-medium">Contanti</th>
+                  {hasNoteEntrate ? <th className="px-3 py-2 text-left font-medium">Note</th> : null}
+                  <th className="px-3 py-2 text-right font-medium">Contanti</th>
+                  {hasNoteUscite ? <th className="px-3 py-2 text-left font-medium">Note</th> : null}
+                  {hasAltre ? (
+                    <>
+                      <th className="px-3 py-2 text-right font-medium">Entrate</th>
+                      <th className="px-3 py-2 text-right font-medium">Uscite</th>
+                    </>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody>
+                {giorni.map((row) => {
+                  const saldo = saldoGiornata(row.totali);
+                  return (
+                    <tr
+                      key={row.data}
+                      className={cn(
+                        "cursor-pointer border-b border-[var(--line)] hover:bg-[var(--paper)]",
+                        row.data === giorno && "bg-amber-50/70"
+                      )}
+                      onClick={() => setGiorno(row.data)}
+                    >
+                      <td className="px-3 py-2 font-medium whitespace-nowrap">{formatDate(`${row.data}T12:00:00`)}</td>
+                      <MoneyCell value={row.totali.entrate.carte} tone="in" />
+                      <MoneyCell value={row.totali.entrate.satispay} tone="in" />
+                      <MoneyCell value={row.totali.entrate.contanti} tone="in" />
+                      {hasNoteEntrate ? <NoteCell value={noteGiornata(row.movimenti, "ENTRATA")} /> : null}
+                      <MoneyCell value={row.totali.uscite.contanti} tone="out" />
+                      {hasNoteUscite ? <NoteCell value={noteGiornata(row.movimenti, "USCITA")} /> : null}
+                      {hasAltre ? (
+                        <>
+                          <MoneyCell value={row.totali.altreEntrate} tone="in" />
+                          <MoneyCell value={row.totali.altreUscite} tone="out" />
+                        </>
+                      ) : null}
+                      <td
+                        className={cn(
+                          "px-3 py-2 text-right font-semibold tabular-nums",
+                          saldo >= 0 ? "text-emerald-700" : "text-red-700"
+                        )}
+                      >
+                        {formatEuro(saldo)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="Movimento di cassa">
-        <form onSubmit={save} className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            {(["ENTRATA", "USCITA"] as const).map((tipo) => (
-              <button
-                key={tipo}
-                type="button"
-                onClick={() =>
-                  setForm({
-                    ...form,
-                    tipo,
-                    categoria: firstCategoria(tipo),
-                  })
-                }
-                className={cn(
-                  "rounded-xl border px-3 py-3 text-sm font-medium",
-                  form.tipo === tipo
-                    ? tipo === "ENTRATA"
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-                      : "border-red-500 bg-red-50 text-red-800"
-                    : "border-[var(--line)] bg-white"
-                )}
-              >
-                {tipo === "ENTRATA" ? "Entrata" : "Uscita"}
-              </button>
-            ))}
+      {altri.length > 0 ? (
+        <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white">
+          <div className="border-b border-[var(--line)] px-4 py-3">
+            <h2 className="font-[family-name:var(--font-display)] text-2xl">Altri movimenti</h2>
+            <p className="text-xs text-stone-400">
+              Voci già registrate con categorie diverse. Restano nel saldo e si aprono scegliendo il giorno.
+            </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Importo</Label>
-              <Input
-                required
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={form.importo}
-                onChange={(e) => setForm({ ...form, importo: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Data</Label>
-              <Input
-                type="date"
-                required
-                value={form.data}
-                onChange={(e) => setForm({ ...form, data: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Categoria</Label>
-            {categorie.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-[var(--line)] px-3 py-3 text-sm text-stone-500">
-                Nessuna categoria. Apri «Categorie» per aggiungerne una.
-              </p>
-            ) : (
-              <Select
-                value={form.categoria}
-                onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-              >
-                {categorie.map((c) => (
-                  <option key={c.id} value={c.nome}>
-                    {c.nome}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label>Dettaglio</Label>
-            <Textarea
-              required
-              placeholder="Es. Incasso aperitivo, bolletta luce, fornitore bevande…"
-              value={form.descrizione}
-              onChange={(e) => setForm({ ...form, descrizione: e.target.value })}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Annulla
-            </Button>
-            <Button type="submit" disabled={!form.categoria}>
-              Registra
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-
-      <Dialog open={catOpen} onClose={() => setCatOpen(false)} title="Categorie di cassa">
-        <div className="space-y-5">
-          <form onSubmit={addCategoria} className="space-y-3 rounded-xl border border-[var(--line)] bg-white p-3">
-            <div className="grid grid-cols-2 gap-2">
-              {(["ENTRATA", "USCITA"] as const).map((tipo) => (
-                <button
-                  key={tipo}
-                  type="button"
-                  onClick={() => setNuovaCat((c) => ({ ...c, tipo }))}
-                  className={cn(
-                    "rounded-xl border px-3 py-2 text-sm font-medium",
-                    nuovaCat.tipo === tipo
-                      ? tipo === "ENTRATA"
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-                        : "border-red-500 bg-red-50 text-red-800"
-                      : "border-[var(--line)] bg-white"
-                  )}
-                >
-                  {tipo === "ENTRATA" ? "Entrata" : "Uscita"}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                required
-                placeholder="Nome categoria"
-                value={nuovaCat.nome}
-                onChange={(e) => setNuovaCat((c) => ({ ...c, nome: e.target.value }))}
-              />
-              <Button type="submit">
-                <Plus className="h-4 w-4" />
-                Aggiungi
-              </Button>
-            </div>
-          </form>
-
-          {(["ENTRATA", "USCITA"] as const).map((tipo) => (
-            <section key={tipo}>
-              <h3 className="mb-2 text-sm font-medium text-stone-500">
-                {tipo === "ENTRATA" ? "Entrate" : "Uscite"}
-              </h3>
-              {categorieByTipo[tipo].length === 0 ? (
-                <p className="text-sm text-stone-400">Nessuna categoria.</p>
-              ) : (
-                <ul className="divide-y divide-[var(--line)] overflow-hidden rounded-xl border border-[var(--line)] bg-white">
-                  {categorieByTipo[tipo].map((c) => (
-                    <li key={c.id} className="flex items-center gap-2 px-3 py-2">
-                      <span className="flex-1 text-sm">{c.nome}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => void removeCategoria(c)}
-                        aria-label={`Elimina ${c.nome}`}
-                      >
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-[var(--line)] bg-[var(--paper)] text-left text-xs uppercase tracking-wide text-stone-500">
+                  <th className="px-3 py-2">Giorno</th>
+                  <th className="px-3 py-2">Tipo</th>
+                  <th className="px-3 py-2">Categoria</th>
+                  <th className="px-3 py-2">Dettaglio</th>
+                  <th className="px-3 py-2 text-right">Importo</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {altri.map((movimento) => (
+                  <tr key={movimento.id} className="border-b border-[var(--line)]">
+                    <td className="px-3 py-2 whitespace-nowrap">{formatDate(movimento.data)}</td>
+                    <td className="px-3 py-2">
+                      <Badge tone={movimento.tipo === "ENTRATA" ? "ok" : "danger"}>
+                        <span className="inline-flex items-center gap-1">
+                          {movimento.tipo === "ENTRATA" ? (
+                            <ArrowUpRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowDownRight className="h-3 w-3" />
+                          )}
+                          {movimento.tipo === "ENTRATA" ? "Entrata" : "Uscita"}
+                        </span>
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2">{movimento.categoria}</td>
+                    <td className="px-3 py-2">{movimento.descrizione}</td>
+                    <td
+                      className={cn(
+                        "px-3 py-2 text-right font-semibold tabular-nums",
+                        movimento.tipo === "ENTRATA" ? "text-emerald-700" : "text-red-700"
+                      )}
+                    >
+                      {movimento.tipo === "ENTRATA" ? "+" : "−"}
+                      {formatEuro(movimento.importo)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <Button variant="ghost" size="icon" onClick={() => void remove(movimento.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </Dialog>
+      ) : null}
     </div>
+  );
+}
+
+function AmountField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <label htmlFor={id} className="text-sm text-stone-700">
+        {label}
+      </label>
+      <Input
+        id={id}
+        type="number"
+        min="0"
+        step="0.01"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-36 text-right tabular-nums"
+      />
+    </div>
+  );
+}
+
+function NoteField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm text-stone-700">
+        Note
+      </label>
+      <Textarea id={id} value={value} onChange={(e) => onChange(e.target.value)} className="min-h-[72px] bg-white" />
+    </div>
+  );
+}
+
+function NoteCell({ value }: { value: string }) {
+  return <td className="max-w-xs px-3 py-2 text-xs whitespace-pre-line text-stone-500">{value || "—"}</td>;
+}
+
+function MoneyCell({ value, tone }: { value: number; tone: "in" | "out" }) {
+  return (
+    <td
+      className={cn(
+        "px-3 py-2 text-right tabular-nums",
+        value === 0 ? "text-stone-300" : tone === "in" ? "text-emerald-700" : "text-red-700"
+      )}
+    >
+      {formatEuro(value)}
+    </td>
   );
 }

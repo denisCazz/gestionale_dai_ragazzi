@@ -72,7 +72,7 @@ export async function GET(req: Request) {
       entrate,
       uscite,
       saldo: entrate - uscite,
-      movimenti: movimentiCassa.slice(0, 8),
+      movimenti: movimentiCassa.filter((movimento) => movimento.importo > 0).slice(0, 8),
       series,
     },
     magazzino: {
