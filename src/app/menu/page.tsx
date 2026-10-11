@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  FileDown,
   ImagePlus,
   Pencil,
   Plus,
@@ -82,6 +83,7 @@ export default function MenuPage() {
   const [immaginePreview, setImmaginePreview] = useState<string | null>(null);
   const [rimuoviImmagine, setRimuoviImmagine] = useState(false);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [exporting, setExporting] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -247,6 +249,40 @@ export default function MenuPage() {
     await load();
   }
 
+  async function exportPdf(categoria?: Categoria) {
+    const key = categoria?.id ?? "all";
+    setExporting(key);
+    try {
+      const params = new URLSearchParams();
+      if (soloDisponibili) params.set("disponibili", "1");
+      if (categoria) params.set("categoriaId", categoria.id);
+      const res = await fetch(`/api/menu/pdf?${params.toString()}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(typeof data.error === "string" ? data.error : "Errore creazione PDF");
+        return;
+      }
+      const blob = await res.blob();
+      const header = res.headers.get("Content-Disposition") ?? "";
+      const encoded = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const filename = encoded
+        ? decodeURIComponent(encoded)
+        : categoria
+          ? `Menu Dai Ragazzi - ${categoria.nome}.pdf`
+          : "Menu Dai Ragazzi.pdf";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Errore creazione PDF");
+    } finally {
+      setExporting(null);
+    }
+  }
+
   async function moveCat(cat: Categoria, dir: -1 | 1) {
     const idx = categorie.findIndex((c) => c.id === cat.id);
     const swap = categorie[idx + dir];
@@ -278,6 +314,14 @@ export default function MenuPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
+            variant="secondary"
+            onClick={() => void exportPdf()}
+            disabled={exporting !== null || categorie.every((cat) => cat.voci.length === 0)}
+          >
+            <FileDown className="h-4 w-4" />
+            {exporting === "all" ? "Creo il PDF…" : "Esporta PDF"}
+          </Button>
+          <Button
             variant={soloDisponibili ? "secondary" : "outline"}
             onClick={() => setSoloDisponibili((v) => !v)}
           >
@@ -305,6 +349,16 @@ export default function MenuPage() {
             </div>
             <div className="flex flex-wrap items-center gap-1">
               {!cat.pubblicata && <Badge tone="warn">Nascosta dal sito</Badge>}
+              <Button
+                size="sm"
+                variant="outline"
+                title={`Esporta il PDF di ${cat.nome}`}
+                disabled={exporting !== null || cat.voci.length === 0}
+                onClick={() => void exportPdf(cat)}
+              >
+                <FileDown className="h-4 w-4" />
+                {exporting === cat.id ? "PDF…" : "PDF"}
+              </Button>
               <Button size="icon" variant="ghost" disabled={idx === 0} onClick={() => void moveCat(cat, -1)}>
                 <ChevronUp className="h-4 w-4" />
               </Button>
