@@ -22,7 +22,7 @@ export function loadEnvFile() {
 }
 
 export function dbName() {
-  const name = process.env.DB_NAME?.trim() || "gestionale_garavella_7";
+  const name = process.env.DB_NAME?.trim() || "gestionale_dai_ragazzi";
   if (!/^[A-Za-z0-9_]+$/.test(name)) {
     throw new Error("DB_NAME può contenere solo lettere, numeri e underscore");
   }

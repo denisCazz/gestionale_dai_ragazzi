@@ -8,11 +8,11 @@ export function authUser() {
 }
 
 export function authPassword() {
-  return process.env.AUTH_PASSWORD || "garavella7";
+  return process.env.AUTH_PASSWORD || "dairagazzi";
 }
 
 function secret() {
-  return process.env.AUTH_SECRET?.trim() || "gestionale-garavella-7-dev-secret";
+  return process.env.AUTH_SECRET?.trim() || "gestionale-dai-ragazzi-dev-secret";
 }
 
 export function credentialsMatch(username: string, password: string) {

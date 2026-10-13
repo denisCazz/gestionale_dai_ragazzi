@@ -1,7 +1,7 @@
 services:
   gestionale:
     build: .
-    image: gestionale-garavella-7:latest
+    image: gestionale-dai-ragazzi:latest
     restart: unless-stopped
     ports:
       - "3000:3000"
