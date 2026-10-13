@@ -1,6 +1,6 @@
-# Gestionale Dai Ragazzi
+# Gestionale Garavella 7
 
-Gestionale interno del Bar Dai Ragazzi: magazzino, menu, dipendenti e cassa.
+Gestionale interno del Bar Garavella 7: magazzino, menu, dipendenti e cassa.
 
 ## Avvio
 

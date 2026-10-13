@@ -85,9 +85,9 @@ export function formatPrezzoMenu(prezzo: number) {
 }
 
 export function menuPdfFilename(model: Pick<MenuPdfModel, "scope" | "titolo">) {
-  if (model.scope === "menu") return "Menu Dai Ragazzi.pdf";
+  if (model.scope === "menu") return "Menu Garavella 7.pdf";
   const safe = model.titolo.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-  return `Menu Dai Ragazzi - ${safe}.pdf`;
+  return `Menu Garavella 7 - ${safe}.pdf`;
 }
 
 const styles = StyleSheet.create({
@@ -373,12 +373,12 @@ function MenuDocument({ data }: { data: MenuPdfModel }) {
   const vociTotali = data.sezioni.reduce((sum, sezione) => sum + sezione.voci.length, 0);
   const airy = data.scope === "sezione" && vociTotali > 0 && vociTotali <= 8;
   const running =
-    data.scope === "sezione" ? `Dai Ragazzi  ·  ${data.titolo}` : "Dai Ragazzi  ·  Menu";
+    data.scope === "sezione" ? `Garavella 7  ·  ${data.titolo}` : "Garavella 7  ·  Menu";
 
   return (
     <Document
-      title={data.scope === "menu" ? "Menu Dai Ragazzi" : `Menu Dai Ragazzi — ${data.titolo}`}
-      author="Bar Dai Ragazzi"
+      title={data.scope === "menu" ? "Menu Garavella 7" : `Menu Garavella 7 — ${data.titolo}`}
+      author="Bar Garavella 7"
     >
       <Page size="A4" style={styles.page}>
         <View style={styles.frameOuter} fixed />
@@ -390,7 +390,7 @@ function MenuDocument({ data }: { data: MenuPdfModel }) {
         />
 
         <Text style={styles.kicker}>Bar</Text>
-        <Text style={styles.brand}>Dai Ragazzi</Text>
+        <Text style={styles.brand}>Garavella 7</Text>
         <Text style={styles.place}>Piazza Garavella, 7 · Carmagnola</Text>
         <Text style={airy ? [styles.title, styles.titleAiry] : styles.title}>{data.titolo}</Text>
         {data.sottotitolo ? <Text style={styles.subtitle}>{data.sottotitolo}</Text> : null}

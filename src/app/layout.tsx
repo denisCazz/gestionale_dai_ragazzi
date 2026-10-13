@@ -17,8 +17,8 @@ const display = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
-  title: "Gestionale Dai Ragazzi",
-  description: "Magazzino, menu, dipendenti e cassa del Bar Dai Ragazzi.",
+  title: "Gestionale Garavella 7",
+  description: "Magazzino, menu, dipendenti e cassa del Bar Garavella 7.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

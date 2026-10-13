@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link href="/" className="px-2">
           <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--gold)]">Bar</p>
           <p className="font-[family-name:var(--font-display)] text-3xl leading-none text-[var(--cream)]">
-            Dai Ragazzi
+            Garavella 7
           </p>
           <p className="mt-1 text-xs text-[var(--cream-muted)]">Gestionale</p>
         </Link>
@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--line)] bg-[var(--paper)]/90 px-4 py-3 backdrop-blur lg:hidden">
-          <p className="font-[family-name:var(--font-display)] text-xl">Dai Ragazzi</p>
+          <p className="font-[family-name:var(--font-display)] text-xl">Garavella 7</p>
           <Button type="button" variant="ghost" size="sm" onClick={() => void logout()}>
             <LogOut className="h-4 w-4" />
             Esci
