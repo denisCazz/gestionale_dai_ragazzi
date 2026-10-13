@@ -113,7 +113,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--gold-dim)]">Bar Dai Ragazzi</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--gold-dim)]">Bar Garavella 7</p>
           <h1 className="font-[family-name:var(--font-display)] text-4xl text-[var(--espresso)]">
             Dashboard
           </h1>

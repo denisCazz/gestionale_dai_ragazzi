@@ -268,8 +268,8 @@ export default function MenuPage() {
       const filename = encoded
         ? decodeURIComponent(encoded)
         : categoria
-          ? `Menu Dai Ragazzi - ${categoria.nome}.pdf`
-          : "Menu Dai Ragazzi.pdf";
+          ? `Menu Garavella 7 - ${categoria.nome}.pdf`
+          : "Menu Garavella 7.pdf";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

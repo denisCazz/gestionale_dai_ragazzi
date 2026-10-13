@@ -2,8 +2,6 @@ const DEFAULT_ORIGINS = [
   "http://localhost:4321",
   "http://127.0.0.1:4321",
   "https://garavella7.bitora.it",
-  "https://www.bardairagazzicarmagnola.it",
-  "https://bardairagazzicarmagnola.it",
 ];
 
 function allowedOrigins() {

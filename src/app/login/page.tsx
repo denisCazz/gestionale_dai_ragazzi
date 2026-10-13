@@ -42,7 +42,7 @@ function LoginForm() {
         <div>
           <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--gold-dim)]">Bar</p>
           <h1 className="font-[family-name:var(--font-display)] text-4xl text-[var(--espresso)]">
-            Dai Ragazzi
+            Garavella 7
           </h1>
           <p className="mt-1 text-sm text-stone-500">Accedi al gestionale</p>
         </div>
