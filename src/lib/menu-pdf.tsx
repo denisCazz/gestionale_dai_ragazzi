@@ -419,7 +419,7 @@ function MenuDocument({ data }: { data: MenuPdfModel }) {
           <View style={styles.footerRule} />
           <Text style={styles.footerPlace}>Piazza Garavella, 7 · Carmagnola (TO)</Text>
           <Text style={styles.footerHours}>
-            Lun 7:00–19:00 · Mar–Sab 7:00–21:00 · Dom 8:00–13:00 e 17:30–21:00
+            Lun–Sab 06:30–21:00 · Dom 08:30–12:30 e 17:00–21:00
           </Text>
           <Text
             style={styles.footerPage}
