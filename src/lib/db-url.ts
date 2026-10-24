@@ -33,8 +33,9 @@ export function mysqlConnection(database?: string) {
   loadEnvFile();
   const host = process.env.DB_HOST?.trim();
   const user = process.env.DB_USER?.trim();
-  const password = process.env.DB_PASSWORD;
-  if (!host || !user || password === undefined || password === "") {
+  const password = process.env.DB_PASSWORD ?? "";
+  const isLocal = host === "127.0.0.1" || host === "localhost";
+  if (!host || !user || (!isLocal && password === "")) {
     throw new Error("Compila DB_HOST, DB_USER e DB_PASSWORD nel file .env");
   }
   return {
@@ -59,7 +60,10 @@ export function applyDatabaseUrl() {
   if (ssl) params.set("sslaccept", "accept_invalid_certs");
   params.set("connect_timeout", process.env.DB_CONNECT_TIMEOUT || "20");
   params.set("pool_timeout", "20");
-  const url = `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}?${params.toString()}`;
+  const auth = password
+    ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
+    : encodeURIComponent(user);
+  const url = `mysql://${auth}@${host}:${port}/${database}?${params.toString()}`;
   process.env.DATABASE_URL = url;
   return url;
 }

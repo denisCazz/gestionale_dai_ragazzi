@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth";
+import { SESSION_COOKIE, parseSession } from "@/lib/auth";
 
 function isPublic(pathname: string) {
   return (
@@ -10,25 +10,47 @@ function isPublic(pathname: string) {
   );
 }
 
+function isAllowedForDipendente(pathname: string) {
+  return (
+    pathname === "/timbratura" ||
+    pathname.startsWith("/timbratura/") ||
+    pathname === "/api/timbratura" ||
+    pathname.startsWith("/api/timbratura/") ||
+    pathname === "/api/auth/logout" ||
+    pathname === "/api/auth/me"
+  );
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const loggedIn = verifySession(request.cookies.get(SESSION_COOKIE)?.value);
+  const session = parseSession(request.cookies.get(SESSION_COOKIE)?.value);
 
-  if (pathname === "/login" && loggedIn) {
-    return NextResponse.redirect(new URL("/", request.url));
+  if (pathname === "/login" && session) {
+    const dest = session.role === "DIPENDENTE" ? "/timbratura" : "/";
+    return NextResponse.redirect(new URL(dest, request.url));
   }
 
-  if (isPublic(pathname) || loggedIn) {
+  if (isPublic(pathname)) {
     return NextResponse.next();
   }
 
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  if (!session) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+    }
+    const login = new URL("/login", request.url);
+    login.searchParams.set("from", pathname);
+    return NextResponse.redirect(login);
   }
 
-  const login = new URL("/login", request.url);
-  login.searchParams.set("from", pathname);
-  return NextResponse.redirect(login);
+  if (session.role === "DIPENDENTE" && !isAllowedForDipendente(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Accesso riservato agli amministratori" }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL("/timbratura", request.url));
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

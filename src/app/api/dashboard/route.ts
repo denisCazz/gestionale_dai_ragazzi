@@ -3,13 +3,15 @@ import { prisma } from "@/lib/db";
 import { parseRange, toInputDate } from "@/lib/dates";
 import { isLowStock } from "@/lib/magazzino";
 import { disponibilitàVoce } from "@/lib/menu";
+import { ensureExtendedSchema } from "@/lib/schema-ensure";
 import { eachDayOfInterval, format } from "date-fns";
 
 export async function GET(req: Request) {
+  await ensureExtendedSchema();
   const { searchParams } = new URL(req.url);
   const { from, to } = parseRange(searchParams.get("from"), searchParams.get("to"));
 
-  const [movimentiCassa, articoli, voci, dipendenti] = await Promise.all([
+  const [movimentiCassa, articoli, voci, dipendenti, anomaliePresenze] = await Promise.all([
     prisma.movimentoCassa.findMany({
       where: { data: { gte: from, lte: to } },
       orderBy: { data: "desc" },
@@ -24,6 +26,16 @@ export async function GET(req: Request) {
       orderBy: [{ categoria: { ordine: "asc" } }, { ordine: "asc" }],
     }),
     prisma.dipendente.findMany({ where: { attivo: true } }),
+    prisma.anomaliaPresenza
+      .findMany({
+        where: { letta: false },
+        include: {
+          dipendente: { select: { id: true, nome: true, cognome: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      })
+      .catch(() => []),
   ]);
 
   const entrate = movimentiCassa
@@ -85,6 +97,7 @@ export async function GET(req: Request) {
     },
     dipendenti: {
       attivi: dipendenti.length,
+      anomalie: anomaliePresenze,
     },
   });
 }

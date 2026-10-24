@@ -1,11 +1,13 @@
 import { PrismaClient, TipoMovimentoCassa, TipoMovimentoMagazzino, TipoPresenza } from "@prisma/client";
 import { format, startOfMonth, subDays } from "date-fns";
 import { applyDatabaseUrl } from "../src/lib/db-url";
+import { hashPassword } from "../src/lib/auth";
 
 applyDatabaseUrl();
 const prisma = new PrismaClient();
 
 async function main() {
+  await prisma.anomaliaPresenza.deleteMany().catch(() => null);
   await prisma.presenza.deleteMany();
   await prisma.movimentoCassa.deleteMany();
   await prisma.categoriaCassa.deleteMany();
@@ -15,6 +17,7 @@ async function main() {
   await prisma.movimentoMagazzino.deleteMany();
   await prisma.articolo.deleteMany();
   await prisma.dipendente.deleteMany();
+  await prisma.promozione.deleteMany().catch(() => null);
 
   const articoliData = [
     { codice: "CAFFE", ean: "8001234567001", nome: "Caffè in grani", unitaMisura: "kg", quantita: 8, sogliaMinima: 2, ubicazione: "Bar" },
@@ -55,9 +58,10 @@ async function main() {
     [
       { nome: "Colazione", slug: "colazione", sottotitolo: "Dolce, salato, farcito al momento.", ordine: 1 },
       { nome: "Pausa pranzo", slug: "pausa-pranzo", sottotitolo: "Panini, focacce, hamburger e tavola calda.", ordine: 2 },
-      { nome: "Aperitivi", slug: "aperitivi", sottotitolo: "Less stress, more spritz.", ordine: 3 },
-      { nome: "Cocktail & spritz", slug: "cocktail-e-spritz", sottotitolo: "Dal classico allo spritz fatto con la birra.", ordine: 4 },
-      { nome: "Cantina", slug: "cantina", sottotitolo: "Etichette che ruotiamo spesso.", ordine: 5 },
+      { nome: "Pizze", slug: "pizze", sottotitolo: "Sfornate al momento, anche per aperitivo.", ordine: 3 },
+      { nome: "Aperitivi", slug: "aperitivi", sottotitolo: "Less stress, more spritz.", ordine: 4 },
+      { nome: "Cocktail & spritz", slug: "cocktail-e-spritz", sottotitolo: "Dal classico allo spritz fatto con la birra.", ordine: 5 },
+      { nome: "Cantina", slug: "cantina", sottotitolo: "Etichette che ruotiamo spesso.", ordine: 6 },
     ].map((c) => prisma.categoriaMenu.create({ data: c }))
   );
 
@@ -100,6 +104,23 @@ async function main() {
   ]);
   await voce("Pausa pranzo", "Patatine", 3.5, [{ code: "PATATINE", qty: 0.15 }], "Porzione di patatine fritte.");
   await voce(
+    "Pizze",
+    "Pizza Margherita",
+    6.5,
+    [{ code: "FORMAGGIO", qty: 0.1 }],
+    "Pomodoro, mozzarella fior di latte e basilico."
+  );
+  await voce(
+    "Pizze",
+    "Pizza Farcita / Diavola",
+    8,
+    [
+      { code: "FORMAGGIO", qty: 0.1 },
+      { code: "SALUMI", qty: 0.08 },
+    ],
+    "Pomodoro, mozzarella e salumi selezionati."
+  );
+  await voce(
     "Aperitivi",
     "Aperitivo a buffet",
     13,
@@ -141,6 +162,7 @@ async function main() {
     "Complesso e intenso, con note di vaniglia, cipria e zucchero filato."
   );
 
+  const defaultPwdHash = hashPassword("garavella7");
   const dipendenti = await Promise.all([
     prisma.dipendente.create({
       data: {
@@ -149,6 +171,8 @@ async function main() {
         ruolo: "Gestione",
         telefono: "3331112233",
         email: "luca@bardairagazzi.it",
+        username: "luca.ferrero",
+        passwordHash: defaultPwdHash,
         dataAssunzione: new Date("2021-04-01"),
         retribuzione: 2100,
       },
@@ -160,6 +184,8 @@ async function main() {
         ruolo: "Barista",
         telefono: "3334455667",
         email: "giulia@bardairagazzi.it",
+        username: "giulia.martini",
+        passwordHash: defaultPwdHash,
         dataAssunzione: new Date("2023-06-15"),
         retribuzione: 1450,
       },
@@ -170,6 +196,8 @@ async function main() {
         cognome: "Bianchi",
         ruolo: "Cucina",
         telefono: "3339988776",
+        username: "marco.bianchi",
+        passwordHash: defaultPwdHash,
         dataAssunzione: new Date("2024-02-01"),
         retribuzione: 1550,
       },
@@ -180,11 +208,45 @@ async function main() {
         cognome: "Conti",
         ruolo: "Sala",
         telefono: "3335566778",
+        username: "sara.conti",
+        passwordHash: defaultPwdHash,
         dataAssunzione: new Date("2025-09-01"),
         retribuzione: 1300,
       },
     }),
   ]);
+
+  await prisma.promozione.createMany({
+    data: [
+      {
+        titolo: "Aperitivo a buffet",
+        titoloEn: "Buffet aperitivo",
+        quando: "Tutti i venerdì",
+        quandoEn: "Every Friday",
+        orario: "17:30 – 20:30",
+        prezzo: 13,
+        nota: "Compresa la prima consumazione",
+        notaEn: "First drink included",
+        evidenza: true,
+        attiva: true,
+        ordine: 1,
+      },
+      {
+        titolo: "Aperitivo con tagliere",
+        titoloEn: "Aperitivo with a board",
+        quando: "Dal giovedì alla domenica, escluso il venerdì",
+        quandoEn: "Thursday to Sunday, except Friday",
+        orario: "17:30 – 20:30",
+        prezzo: 8.5,
+        nota: "Finger food, sfiziosità fritte, pizza. Può variare in base alle disponibilità. Compresa la prima consumazione",
+        notaEn:
+          "Finger food, fried bites, pizza. It can change with what’s available. First drink included",
+        evidenza: false,
+        attiva: true,
+        ordine: 2,
+      },
+    ],
+  });
 
   const monthStart = startOfMonth(new Date());
   for (const d of dipendenti) {

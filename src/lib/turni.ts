@@ -21,7 +21,11 @@ function minutiDaOra(ora: string) {
 function intervallo(ingresso: string, uscita: string) {
   const start = minutiDaOra(ingresso);
   const end = minutiDaOra(uscita);
-  if (start === null || end === null || start === end) return null;
+  if (start === null || end === null) return null;
+  if (start === end) {
+    // Timbratura di entrata e uscita nello stesso minuto: conta 1 minuto minimo
+    return { start, end: start + 1 };
+  }
   return { start, end: end > start ? end : end + GIORNO };
 }
 
@@ -45,7 +49,17 @@ export function durataTurno(ingresso: string, uscita: string) {
 export function formatDurata(minuti: number) {
   const ore = Math.floor(minuti / 60);
   const resto = minuti % 60;
-  return resto ? `${ore}h ${resto}m` : `${ore}h`;
+  return `${ore}h ${String(resto).padStart(2, "0")}m`;
+}
+
+export function minutiLavorati(orari: OrariPresenza): number {
+  const prima =
+    orari.oraIngresso && orari.oraUscita ? durataTurno(orari.oraIngresso, orari.oraUscita) : null;
+  const seconda =
+    orari.oraIngresso2 && orari.oraUscita2
+      ? durataTurno(orari.oraIngresso2, orari.oraUscita2)
+      : null;
+  return (prima ?? 0) + (seconda ?? 0);
 }
 
 export function oreLavorateLabel(orari: OrariPresenza) {
@@ -55,10 +69,18 @@ export function oreLavorateLabel(orari: OrariPresenza) {
     orari.oraIngresso2 && orari.oraUscita2
       ? durataTurno(orari.oraIngresso2, orari.oraUscita2)
       : null;
-  if (prima === null && seconda === null) return null;
+  if (prima === null && seconda === null) {
+    if (orari.oraIngresso && !orari.oraUscita) {
+      return `In corso (entrata ${orari.oraIngresso})`;
+    }
+    return null;
+  }
   const totale = (prima ?? 0) + (seconda ?? 0);
   if (prima !== null && seconda !== null) {
     return `${formatDurata(totale)} (${formatDurata(prima)} + ${formatDurata(seconda)})`;
+  }
+  if (prima !== null && orari.oraIngresso2 && !orari.oraUscita2) {
+    return `${formatDurata(prima)} + 2° turno in corso (${orari.oraIngresso2})`;
   }
   return formatDurata(totale);
 }
@@ -76,30 +98,29 @@ export function normalizzaOrari(input: {
   const oraUscita2 = pulisci(input.oraUscita2);
   const secondoAttivo = input.doppio === true || Boolean(oraIngresso2 || oraUscita2);
 
-  if (oraIngresso && oraUscita && oraIngresso === oraUscita) {
-    return { error: "Ingresso e uscita non possono coincidere" };
-  }
   if (secondoAttivo && (!oraIngresso || !oraUscita)) {
     return { error: "Compila ingresso e uscita del primo turno" };
   }
   if (secondoAttivo && (!oraIngresso2 || !oraUscita2)) {
     return { error: "Compila ingresso e uscita del secondo turno" };
   }
-  if (oraIngresso2 && oraUscita2 && oraIngresso2 === oraUscita2) {
-    return { error: "Ingresso e uscita del secondo turno non possono coincidere" };
-  }
   if (oraIngresso && oraUscita && oraIngresso2 && oraUscita2) {
     const primo = intervallo(oraIngresso, oraUscita);
     const secondo = intervallo(oraIngresso2, oraUscita2);
     if (!primo || !secondo) return { error: "Orari non validi" };
-    if (sovrapposti(primo, secondo)) return { error: "I due turni si sovrappongono" };
+    if (primo.start !== secondo.start && sovrapposti(primo, secondo)) {
+      return { error: "I due turni si sovrappongono" };
+    }
   }
 
   return { orari: { oraIngresso, oraUscita, oraIngresso2, oraUscita2 } };
 }
 
 export function fasciaBreve(ingresso: string | null | undefined, uscita: string | null | undefined) {
-  if (ingresso && uscita) return `${ingresso.slice(0, 2)}–${uscita.slice(0, 2)}`;
+  if (ingresso && uscita) {
+    return `${ingresso.slice(0, 5)}–${uscita.slice(0, 5)}`;
+  }
+  if (ingresso && !uscita) return `${ingresso.slice(0, 5)}→`;
   const sola = ingresso || uscita;
-  return sola ? sola.slice(0, 2) : null;
+  return sola ? sola.slice(0, 5) : null;
 }

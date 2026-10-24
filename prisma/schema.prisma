@@ -133,6 +133,8 @@ model Dipendente {
   ruolo          String    @default("Sala")
   telefono       String?
   email          String?
+  username       String?   @unique
+  passwordHash   String?
   dataAssunzione DateTime?
   retribuzione   Float     @default(0)
   note           String?
@@ -141,25 +143,84 @@ model Dipendente {
   updatedAt      DateTime  @updatedAt
 
   presenze Presenza[]
+  anomalie AnomaliaPresenza[]
 
   @@index([cognome, nome])
 }
 
 model Presenza {
-  id           String       @id @default(cuid())
-  dipendenteId String
-  data         String
-  tipo         TipoPresenza
-  oraIngresso  String?
-  oraUscita    String?
-  oraIngresso2 String?
-  oraUscita2   String?
-  note         String?
+  id               String       @id @default(cuid())
+  dipendenteId     String
+  data             String
+  tipo             TipoPresenza
+  oraIngresso      String?
+  oraUscita        String?
+  oraIngresso2     String?
+  oraUscita2       String?
+  note             String?
+  fuoriPerimetro   Boolean      @default(false)
+  metodoVerifica   String?
+  ipRegistrazione  String?
+  latRegistrazione Float?
+  lngRegistrazione Float?
+  distanzaMetri    Int?
 
   dipendente Dipendente @relation(fields: [dipendenteId], references: [id], onDelete: Cascade)
 
   @@unique([dipendenteId, data])
   @@index([data])
+}
+
+model AnomaliaPresenza {
+  id            String   @id @default(cuid())
+  dipendenteId  String
+  data          String
+  ora           String
+  azione        String
+  motivo        String   @db.VarChar(500)
+  ip            String?
+  lat           Float?
+  lng           Float?
+  distanzaMetri Int?
+  userAgent     String?  @db.VarChar(500)
+  emailInviata  Boolean  @default(false)
+  letta         Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  dipendente Dipendente @relation(fields: [dipendenteId], references: [id], onDelete: Cascade)
+
+  @@index([dipendenteId])
+  @@index([letta])
+  @@index([createdAt])
+}
+
+model ImpostazioniPresenze {
+  id            String   @id @default("default")
+  ipNegozio     String   @default("") @db.VarChar(500)
+  latNegozio    Float    @default(44.84655)
+  lngNegozio    Float    @default(7.720389)
+  raggioMetri   Int      @default(120)
+  emailTitolari String   @default("") @db.VarChar(500)
+  updatedAt     DateTime @updatedAt
+}
+
+model Promozione {
+  id        String   @id @default(cuid())
+  titolo    String
+  titoloEn  String?
+  quando    String
+  quandoEn  String?
+  orario    String?
+  prezzo    Float
+  nota      String?  @db.Text
+  notaEn    String?  @db.Text
+  evidenza  Boolean  @default(false)
+  attiva    Boolean  @default(true)
+  ordine    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([attiva, ordine])
 }
 
 model CategoriaCassa {

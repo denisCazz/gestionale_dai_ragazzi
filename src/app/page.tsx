@@ -48,7 +48,17 @@ type Dashboard = {
     disponibili: number;
     nascosti: { id: string; nome: string; categoria: string; mancanti: { nome: string }[] }[];
   };
-  dipendenti: { attivi: number };
+  dipendenti: {
+    attivi: number;
+    anomalie?: {
+      id: string;
+      data: string;
+      ora: string;
+      azione: string;
+      motivo: string;
+      dipendente: { id: string; nome: string; cognome: string };
+    }[];
+  };
 };
 
 export default function DashboardPage() {
@@ -113,12 +123,12 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--gold-dim)]">Bar Garavella 7</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--gold-dim)]">Garavella 7</p>
           <h1 className="font-[family-name:var(--font-display)] text-4xl text-[var(--espresso)]">
             Dashboard
           </h1>
           <p className="mt-1 text-sm text-stone-500">
-            Cassa, magazzino e menu collegati in un colpo d&apos;occhio.
+            Cassa, magazzino, promozioni, menu e presenze in un colpo d&apos;occhio.
           </p>
         </div>
         <Link
@@ -186,9 +196,21 @@ export default function DashboardPage() {
             Avvisi
           </h2>
           <div className="space-y-3 text-sm">
-            {data.magazzino.sottoScorta.length === 0 && data.menu.nascosti.length === 0 ? (
-              <p className="text-stone-500">Nessun avviso. Magazzino e menu ok.</p>
+            {data.magazzino.sottoScorta.length === 0 &&
+            data.menu.nascosti.length === 0 &&
+            (data.dipendenti.anomalie?.length ?? 0) === 0 ? (
+              <p className="text-stone-500">Nessun avviso. Magazzino, menu e presenze ok.</p>
             ) : null}
+            {(data.dipendenti.anomalie ?? []).slice(0, 3).map((anom) => (
+              <Link key={anom.id} href="/dipendenti" className="block rounded-xl border border-red-200 bg-red-50 p-3">
+                <p className="font-medium text-red-900">
+                  ⚠️ {anom.dipendente.cognome} {anom.dipendente.nome} — {anom.azione} fuori perimetro
+                </p>
+                <p className="text-xs text-red-700">
+                  {anom.data} alle {anom.ora} · {anom.motivo}
+                </p>
+              </Link>
+            ))}
             {data.magazzino.sottoScorta.slice(0, 4).map((a) => (
               <Link key={a.id} href={`/magazzino/${a.id}`} className="block rounded-xl bg-amber-50 p-3">
                 <p className="font-medium text-amber-900">{a.nome}</p>

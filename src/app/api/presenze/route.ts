@@ -1,19 +1,47 @@
 ﻿import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { normalizzaOrari, type OrariPresenza } from "@/lib/turni";
+import { ensureExtendedSchema } from "@/lib/schema-ensure";
+import { extractClientIp, getImpostazioniPresenze } from "@/lib/perimetro";
 import { z } from "zod";
 
 export async function GET(req: Request) {
+  await ensureExtendedSchema();
   const { searchParams } = new URL(req.url);
   const mese = searchParams.get("mese") ?? "";
-  const dipendenti = await prisma.dipendente.findMany({
-    where: { attivo: true },
-    orderBy: [{ cognome: "asc" }, { nome: "asc" }],
+  const [dipendentiRaw, presenze, anomalie, impostazioni] = await Promise.all([
+    prisma.dipendente.findMany({
+      where: { attivo: true },
+      orderBy: [{ cognome: "asc" }, { nome: "asc" }],
+    }),
+    prisma.presenza.findMany({
+      where: mese ? { data: { startsWith: mese } } : undefined,
+    }),
+    prisma.anomaliaPresenza.findMany({
+      where: { letta: false },
+      include: {
+        dipendente: { select: { id: true, nome: true, cognome: true, ruolo: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
+    getImpostazioniPresenze(),
+  ]);
+
+  const dipendenti = dipendentiRaw.map(({ passwordHash, ...rest }) => ({
+    ...rest,
+    hasPassword: Boolean(passwordHash),
+  }));
+
+  return NextResponse.json({
+    dipendenti,
+    presenze,
+    anomalie,
+    impostazioni: {
+      ...impostazioni,
+      currentIp: extractClientIp(req),
+    },
   });
-  const presenze = await prisma.presenza.findMany({
-    where: mese ? { data: { startsWith: mese } } : undefined,
-  });
-  return NextResponse.json({ dipendenti, presenze });
 }
 
 const oraSchema = z
@@ -23,6 +51,7 @@ const oraSchema = z
   .optional();
 
 export async function PUT(req: Request) {
+  await ensureExtendedSchema();
   const parsed = z
     .object({
       dipendenteId: z.string().min(1),
@@ -58,7 +87,7 @@ export async function PUT(req: Request) {
   }
   const presenza = await prisma.presenza.upsert({
     where: { dipendenteId_data: { dipendenteId, data } },
-    create: { dipendenteId, data, tipo, ...orari },
+    create: { dipendenteId, data, tipo, ...orari, metodoVerifica: "ADMIN" },
     update: { tipo, ...orari },
   });
   return NextResponse.json({ presenza });
